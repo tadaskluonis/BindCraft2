@@ -28,6 +28,7 @@ import os
 import statistics
 import sys
 import urllib.request
+import zlib
 
 import jax
 import numpy as np
@@ -60,6 +61,12 @@ def net_charge(sequence: str) -> int:
 def designed_chain(entry: str, chain: str) -> Protein:
     protein = Protein.from_structure(fetch(entry), chains=chain)[chain]
     return protein.replace(flags=protein.flags | int(ResidueFlags.DESIGN))
+
+def condition_seed(backbone: str, target: int) -> int:
+    """Each condition gets its own random stream. One shared seed would give every target the same
+    decoding orders, so their noise would be correlated and the wobble along the curve would not
+    average out."""
+    return zlib.crc32(f'{SEED}:{backbone}:{target}'.encode()) % (2 ** 31)
 
 def decode(protein: Protein, count: int, target_charge=None, seed: int=SEED) -> list[dict]:
     model = ProteinMPNNSequenceModel(data_dir=proteinmpnn_weights(), temperature=TEMPERATURE,
@@ -112,7 +119,7 @@ def main() -> int:
 
         for offset in arguments.offsets:
             target = preferred + offset
-            designs = decode(protein, arguments.n_designs, target_charge=target)
+            designs = decode(protein, arguments.n_designs, target_charge=target, seed=condition_seed(entry, target))
             charges = [design['charge'] for design in designs]
             constrained_nll = mean(d['nll'] for d in designs)
             for design in designs:
@@ -124,7 +131,7 @@ def main() -> int:
                    'offset': offset, 'target': target, 'demand_per_residue': abs(offset) / length,
                    'n_constrained': len(designs), 'on_target': sum(charge == target for charge in charges),
                    'constrained_nll': constrained_nll, 'constrained_sd': spread(d['nll'] for d in designs),
-                   'pool_nll': pool_nll, 'pool_sd': spread(d['nll'] for d in pool),
+                   'n_pool': len(pool), 'pool_nll': pool_nll, 'pool_sd': spread(d['nll'] for d in pool),
                    'n_rejection': len(reference) if enough else 0,
                    'rejection_nll': mean(reference) if enough else '',
                    'rejection_sd': spread(reference) if enough else '',
