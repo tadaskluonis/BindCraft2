@@ -47,7 +47,8 @@ def charge_constraint_inputs(decoding_order: Array, chain_indices: Array, resolv
     scope, designed, native_charge, allowed_amino_acids = charge_constraint_arrays(chain_indices, resolved_residue_mask, fixed_residue_mask, sequence, sequence_bias, temperature)
     values = charge_values()
     return {'target': jnp.asarray(charge_constraint['target'], dtype=jnp.float32), 'tolerance': jnp.asarray(charge_constraint['tolerance'], dtype=jnp.float32),
-            'lambda_max': jnp.asarray(charge_constraint['lambda_max'], dtype=jnp.float32), 'values': values,
+            'lambda_max': jnp.asarray(charge_constraint['lambda_max'], dtype=jnp.float32),
+            'temperature': jnp.asarray(temperature, dtype=jnp.float32), 'values': values,
             'schedule': charge_schedule(decoding_order, scope, designed, native_charge, allowed_amino_acids, values)}
 
 def proteinmpnn_input_features(atoms: Array, resolved_residue_mask: Array, residue_index: Array, chain_indices: Array, fixed_residue_mask: Array, sequence: Array, temperature: Array, key: Array, tied_residue_groups: Array | None=None, redesigned_amino_acid_bias: Array | None=None, charge_constraint: dict | None=None) -> dict[str, Array]:

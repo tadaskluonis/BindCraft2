@@ -1,10 +1,10 @@
 # What the net-charge budget costs
 
-Asking the redesign stage for a net charge makes it emit less typical sequences. On three single-domain globular proteins spanning 54–214 residues, every one of 2112 designs landed exactly on its target charge, and the price was **0.025–0.090 nats per residue** measured against exact conditioning, with all 25 target conditions showing real overhead (95% confidence intervals exclude zero). Cost scales with charge units *per residue*, not charge units: a 6 e shift costs roughly 0.03–0.04 nats/residue on a 214-mer and 0.06–0.12 on a 54-mer.
+Asking the redesign stage for a net charge makes it emit less typical sequences. On three single-domain globular proteins spanning 54–214 residues, every one of 4224 designs landed exactly on its target charge, spread across 33 target conditions (11 per backbone), and the price was **0.025–0.090 nats per residue** measured against exact conditioning, with all 25 conditions that had rejection-sampling reference showing real overhead (95% confidence intervals exclude zero). Cost scales with charge units *per residue*, not charge units: a 6 e shift costs roughly 0.03–0.04 nats/residue on a 214-mer and 0.06–0.12 on a 54-mer.
 
 ![Cost of the net-charge budget on three globular backbones](_static/charge_cost.png)
 
-**Figure.** *(a)* Absolute per-residue negative log-likelihood. Filled markers are designs decoded under the budget (n = 128 per point, independent random seed per target); open markers are exact conditioning by rejection sampling, that is, the unconstrained designs that already happened to carry that charge (n = 12 to 272, only where the pool supplied at least 10). The shaded band is the unconstrained pool mean ± 95% confidence interval. Error bars are 95% confidence intervals of the mean. Open markers below the band show conditions where the constraint is aligned with the model's natural preferences — conditioning on a charge the model already likes is cheaper than the pool average. *(b)* The gap between the two — what the controller spends above exact conditioning — with the median marked; each point is the difference of two noisy estimates, so the error bar combines both sources. Filled circles mark conditions where the 95% interval excludes zero (all 25 here do); open circles would mark intervals that include zero. The baseline shifts right and the overhead shrinks by a factor of 3–4 as chain length goes up, matching the normal approximation in the lookahead: it is a central-limit argument, so it tightens as more positions carry the cost.
+**Figure.** *(a)* Absolute per-residue negative log-likelihood. Filled markers are designs decoded under the budget (128 per target condition, independent random seed per condition); unfilled markers are exact conditioning by rejection sampling, that is, the unconstrained designs that already happened to carry that charge (available where the 2048-design pool had at least 10 designs at that charge). The shaded band is the unconstrained pool mean ± 95% confidence interval. Error bars are 95% confidence intervals of the mean. Unfilled markers below the band show conditions where the constraint is aligned with the model's natural preferences — conditioning on a charge the model already likes is cheaper than the pool average. *(b)* The gap between the two — what the controller spends above exact conditioning — with the median marked; each point is the difference of two noisy estimates, so the error bar combines both sources. Filled circles mark conditions where the 95% interval excludes zero (all 25 here do); open circles would mark intervals that include zero. The overhead shrinks by a factor of 3–4 as chain length goes up, matching the normal approximation in the lookahead: it is a central-limit argument, so it tightens as more positions carry the cost.
 
 ## Why the controller's overhead is real, and why we can measure it
 
@@ -12,7 +12,7 @@ The budget is enforced by two stages. A soft steering term in the MPNN sampler r
 
 Rejection sampling is the gold standard for measuring that cost. Draw a large unconstrained pool (2048 designs here) and keep the designs that already satisfy the constraint — those come from the true conditional p(sequence | constraint), so we can measure p(sequence | charge = c) exactly. Any constrained sampler that hits the target perfectly still costs likelihood on top of exact conditioning, and that gap is the controller's own distortion, not a fundamental cost of the constraint.
 
-Panel (b) shows that gap with both sources of noise included: the 128-design sample's uncertainty in the constrained mean, and the rejection sample's uncertainty in the true mean (which varies because the pool contains more designs at some charges than others). All 25 measured conditions have intervals that exclude zero, meaning the overhead is real and not just sampling noise. But because the intervals widen where the constraint is far from the model's preference — fewer pool designs to sample from, and wider spread in the designs that do carry that charge — the controller's own cost is clearest when you ask for a charge it already likes. At charge +1 on 1ENH the model's pool mean is already +1, so the constrained sampler recovers nearly the exact conditional (overhead ≈ 0.07 nats/residue, panel b) and the absolute likelihood (panel a, filled marker at offset 0) sits squarely on the pool band.
+Panel (b) shows that gap with both sources of noise included: the 128-design sample's uncertainty in the constrained mean, and the rejection sample's uncertainty in the true mean (which varies because the pool contains more designs at some charges than others). All 25 measured conditions have intervals that exclude zero, meaning the overhead is real and not just sampling noise. But because the intervals widen where the constraint is far from the model's preference — fewer pool designs to sample from, and wider spread in the designs that do carry that charge — the controller's own cost is clearest when you ask for a charge it already likes. At charge +1 on 1ENH (offset 0 in the plot) the model's pool mean is already +1, so the constrained sampler recovers nearly the exact conditional (overhead ≈ 0.07 nats/residue, panel b) and the absolute likelihood (panel a, filled marker) sits squarely on the pool band.
 
 ## The steering-cap fix
 
@@ -22,15 +22,15 @@ Fixing it to clip at `lambda_max / temperature` at decode time restored your sem
 
 ## Results
 
-| Backbone | Description | Length | Unconstrained NLL | Preferred charge | On target | Median controller overhead | Overhead range |
-|---|---|---|---|---|---|---|---|
-| 1ENH | engrailed homeodomain | 54 | 1.026 | +1 | 1152/1152 | 0.090 nats/res | 0.069–0.111 |
-| 1BRS | barnase | 108 | 0.695 | +3 | 896/896 | 0.054 nats/res | 0.040–0.065 |
-| 1AKE | adenylate kinase | 214 | 0.809 | −5 | 1152/1152 | 0.025 nats/res | 0.022–0.039 |
+| Backbone | Description | Length | Unconstrained NLL | Preferred charge | Total designs | Designs with rejection | Median controller overhead | Overhead range |
+|---|---|---|---|---|---|---|---|---|
+| 1ENH | engrailed homeodomain | 54 | 1.026 | +1 | 1408 | 1070 | 0.090 nats/res | 0.069–0.111 |
+| 1BRS | barnase | 108 | 0.695 | +3 | 1408 | 1097 | 0.054 nats/res | 0.040–0.065 |
+| 1AKE | adenylate kinase | 214 | 0.809 | −5 | 1408 | 1053 | 0.025 nats/res | 0.022–0.039 |
 
-All figures are nats per residue. "On target" = designs hitting their exact charge. "Overhead" = the difference between the constrained sampler and the true conditional (rejection sampling). Two findings:
+All figures are nats per residue. "Total designs" = 128 designs × 11 target conditions per backbone. "Designs with rejection" = conditions where the 2048-design pool had ≥10 designs at that charge, enabling rejection-sampling measurement. "Overhead" = the difference between the constrained sampler and the true conditional. Two findings:
 
-1. **The budget is met, always.** 3584 of 3584 designs carried exactly the charge asked for (128 designs × 11 targets × 3 backbones, minus the ones where rejection sampling was impossible because the pool had fewer than 10 designs at that charge). The hard reachability mask does its job.
+1. **The budget is met, always.** 4224 of 4224 designs (128 × 11 conditions × 3 backbones) carried exactly the charge asked for. The hard reachability mask does its job.
 
 2. **The overhead shrinks with chain length.** The median overhead is 0.090 on a 54-mer, 0.054 on a 108-mer, and 0.025 on a 214-mer. That 3.6× range tracks the scaling of the normal approximation: the lookahead's confidence in reaching the target scales as 1/√n_designed. A 60–90 residue binder sits partway through that range. When you ask for a charge that the model already likes, the overhead is much smaller (0.01–0.03 nats/residue, often at the boundary of the measurement noise).
 
@@ -45,4 +45,4 @@ python benchmarks/charge_cost.py          # ~3 min on one GPU; fetches 1ENH, 1BR
 python benchmarks/plot_charge_cost.py     # redraws the figure from the summary CSV
 ```
 
-Per-design rows are in `benchmarks/results/charge_cost_designs.csv` and the per-target summary in `benchmarks/results/charge_cost_summary.csv`. Structures are fetched on demand and not kept in the repository. The run behind this page used a 2048-design unconstrained pool and 128 designs per target, independent random seed per condition, `mpnn_variant: neutral`, temperature 0.1, on one RTX 5090.
+Per-design rows are in `benchmarks/results/charge_cost_designs.csv` and the per-target summary in `benchmarks/results/charge_cost_summary.csv`. Structures are fetched on demand and not kept in the repository. The run behind this page used a 2048-design unconstrained pool and 128 designs per target condition, 11 target conditions per backbone (charges relative to each backbone's unconstrained mean), independent random seed per condition, `mpnn_variant: neutral`, temperature 0.1, on one RTX 5090.

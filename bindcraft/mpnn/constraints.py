@@ -104,6 +104,11 @@ def charge_logit_delta(state: dict, step: dict, sampling_logits: jnp.ndarray, co
     """
     values, target = constraint['values'], constraint['target']
     tolerance, lambda_max = constraint['tolerance'], constraint['lambda_max']
+    #lambda_max caps the steering in the reference implementation's units, which are the logits
+    #BEFORE the temperature division; these logits are after it, so the cap scales the same way.
+    #Clipping at lambda_max directly would be temperature/lambda_max times tighter - at T = 0.1 it
+    #throttled the lookahead hard enough to triple the controller's overhead on a 214-mer.
+    sampling_cap = lambda_max / jnp.clip(constraint['temperature'], 1e-06, None)
     active = step['designed'] * (step['multiplicity'] > 0)
     marginal = jax.nn.softmax(sampling_logits[0, :20])
     step_mean = (marginal * values[:20]).sum()
@@ -124,7 +129,7 @@ def charge_logit_delta(state: dict, step: dict, sampling_logits: jnp.ndarray, co
     log_reachable = log_reachable - log_reachable.max()
     #the last designed step has no remainder to look ahead to, and the mask alone decides it
     log_reachable = jnp.where(step['remaining_designed'] > 0.5, log_reachable, 0.0)
-    steer = jnp.clip(log_reachable, -lambda_max, 0.0)
+    steer = jnp.clip(log_reachable, -sampling_cap, 0.0)
     contribution = step['multiplicity'] * values
     lowest_end = state['charge'] + step['remaining_low'] + contribution
     highest_end = state['charge'] + step['remaining_high'] + contribution

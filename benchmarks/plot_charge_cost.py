@@ -3,9 +3,9 @@
     python benchmarks/plot_charge_cost.py     # reads results/charge_cost_summary.csv
 
 Panel (a) shows absolute per-residue NLL for designs decoded under the budget (filled markers) and
-the true conditional via rejection sampling (unfilled markers). The shaded band is the unconstrained
-pool baseline ± 95% CI. All error bars are 95% confidence intervals of the mean. Panel (b) is the
-gap: the controller's overhead above exact conditioning, with medians marked.
+the true conditional via rejection sampling (unfilled markers), connected by backbone.
+The shaded band is the unconstrained pool baseline ± 95% CI. Panel (b) is the controller's overhead,
+with error bars showing both sources of noise.
 """
 import argparse
 import os
@@ -16,7 +16,6 @@ import pandas as pd
 from scipy import stats
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-#Okabe-Ito: distinguishable under deuteranopia, no red/green opposition
 COLOURS = {'1ENH': '#0072B2', '1BRS': '#E69F00', '1AKE': '#009E73'}
 SIZES = (8, 7, 6)
 
@@ -33,7 +32,6 @@ def half_width(spread, count):
     return stats.t.ppf(0.975, count - 1) * spread / count ** 0.5
 
 def overhead_interval(row):
-    """95% half-width of (constrained mean - rejection mean): the two standard errors add in quadrature."""
     variance = (row.constrained_sd ** 2 / row.n_constrained) + (row.rejection_sd ** 2 / row.n_rejection)
     return 1.96 * variance ** 0.5
 
@@ -57,15 +55,24 @@ def main() -> int:
         pool_half = half_width(pool_sd, pool_n)
         nll_axes.fill_between(span, [pool_nll - pool_half] * 2, [pool_nll + pool_half] * 2, 
                               color=colour, alpha=0.18, linewidth=0, zorder=1)
+        
+        # Constrained designs: filled markers with connecting line
         error = [half_width(sd, n) for sd, n in zip(rows.constrained_sd, rows.n_constrained)]
-        nll_axes.errorbar(rows.offset, rows.constrained_nll, yerr=error, color='#333333', marker='o',
+        nll_axes.plot(rows.offset, rows.constrained_nll, color=colour, linewidth=1.2, zorder=2)
+        nll_axes.errorbar(rows.offset, rows.constrained_nll, yerr=error, color=colour, marker='o',
                           markersize=3.2, markerfacecolor=colour, markeredgewidth=0, 
                           elinewidth=0.6, capsize=1.6, linestyle='none', zorder=3)
-        reference = rows.dropna(subset=['rejection_nll'])
-        reference_error = [half_width(sd, n) for sd, n in zip(reference.rejection_sd, reference.n_rejection)]
-        nll_axes.errorbar(reference.offset, reference.rejection_nll, yerr=reference_error,
-                          color='#333333', marker='o', markersize=4.2, markerfacecolor='white', 
-                          markeredgewidth=0.9, linestyle='none', elinewidth=0.6, capsize=1.6, zorder=4)
+        
+        # Rejection sampling: unfilled markers with connecting line
+        reference = rows.dropna(subset=['rejection_nll']).copy()
+        if len(reference) > 0:
+            reference_error = [half_width(sd, n) for sd, n in zip(reference.rejection_sd, reference.n_rejection)]
+            nll_axes.plot(reference.offset, reference.rejection_nll, color=colour, linewidth=1.2, 
+                         linestyle='--', alpha=0.6, zorder=2)
+            nll_axes.errorbar(reference.offset, reference.rejection_nll, yerr=reference_error,
+                              color=colour, marker='o', markersize=4.2, markerfacecolor='white', 
+                              markeredgewidth=0.9, linestyle='none', elinewidth=0.6, capsize=1.6, zorder=4)
+        
         last = rows.iloc[-1]
         nll_axes.annotate(f'{backbone} ({last.length} aa)', xy=(last.offset, last.constrained_nll),
                           xytext=(3, 0), textcoords='offset points', color=colour, va='center', fontsize=SIZES[1])
@@ -77,10 +84,10 @@ def main() -> int:
     nll_axes.set_xlim(span[0] - 0.3, span[1] + 5.2)
     nll_axes.set_ylim(0, None)
     nll_axes.margins(y=0.02)
-    nll_axes.plot([], [], color='#333333', marker='o', markersize=3.2, markerfacecolor='#666666',
-                  markeredgewidth=0, linestyle='none', label='decoded under the budget')
-    nll_axes.plot([], [], color='#333333', marker='o', markersize=4.2, markerfacecolor='white',
-                  markeredgewidth=0.9, linestyle='none', label='exact conditioning (rejection sampling)')
+    nll_axes.plot([], [], color='#666666', marker='o', markersize=3.2, markerfacecolor='#666666',
+                  markeredgewidth=0, linestyle='-', linewidth=1.2, label='decoded under the budget')
+    nll_axes.plot([], [], color='#666666', marker='o', markersize=4.2, markerfacecolor='white',
+                  markeredgewidth=0.9, linestyle='--', linewidth=1.2, label='exact conditioning (rejection sampling)')
     nll_axes.legend(loc='upper center', bbox_to_anchor=(0.40, 1.0), fontsize=SIZES[1], handlelength=1.6, borderaxespad=0.2)
 
     for position, backbone in enumerate(order):
@@ -90,13 +97,13 @@ def main() -> int:
         rows['clear'] = rows.excess_nll - rows.half > 0
         shifts = [(index - (len(rows) - 1) / 2) * 0.055 for index in range(len(rows))]
         for shift, (_, row) in zip(shifts, rows.iterrows()):
-            overhead_axes.errorbar(position + shift, row.excess_nll, yerr=row.half, color='#333333',
+            overhead_axes.errorbar(position + shift, row.excess_nll, yerr=row.half, color=colour,
                                    marker='o', markersize=3.2, markerfacecolor=colour if row.clear else 'white',
                                    markeredgewidth=0.8, elinewidth=0.6, capsize=1.2, linestyle='none', zorder=3)
         median = rows.excess_nll.median()
-        overhead_axes.plot([position - 0.26, position + 0.26], [median, median], color=colour, linewidth=1.6, zorder=2)
         overhead_axes.annotate(f'{median:.03f}', xy=(position + 0.31, median), fontsize=SIZES[1],
                                color=colour, va='center', ha='left')
+    
     overhead_axes.axhline(0.0, color='#999999', linewidth=0.6, zorder=1)
     overhead_axes.set_xticks(range(len(order)))
     overhead_axes.set_xticklabels([f'{b}\n{summary.loc[summary.backbone == b, "length"].iloc[0]} aa' for b in order])
