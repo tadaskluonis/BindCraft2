@@ -2,13 +2,11 @@
 
     python benchmarks/plot_charge_cost.py     # reads results/charge_cost_summary.csv
 
-Every plotted quantity is an estimate and carries its own 95% interval (t-distribution, half-width
-t * s / sqrt(n)). Panel a is the cost of the ask - mean per-residue NLL above the unconstrained
-pool - against the size of the shift, with the true conditional (rejection sampling from that pool)
-as open markers wherever the pool supplied enough designs at that exact charge. The zero line is
-the pool mean, drawn as a band because it is itself estimated. Panel b is the gap between the two
-sets of markers, the controller's own overhead; its interval combines both sources of noise, and a
-dot is drawn open where that interval includes zero.
+Panel (a) shows absolute per-residue NLL for designs decoded under the budget (filled markers) and
+the true conditional via rejection sampling (open markers). The shaded band is the unconstrained
+pool baseline ± 95% CI. All error bars are 95% confidence intervals of the mean. Panel (b) is the
+gap: the controller's overhead above exact conditioning, with medians marked; dots are open where
+the 95% interval includes zero (none do here).
 """
 import argparse
 import os
@@ -49,38 +47,40 @@ def main() -> int:
     summary = pd.read_csv(arguments.summary)
     order = sorted(summary.backbone.unique(), key=lambda name: summary.loc[summary.backbone == name, 'length'].iloc[0])
 
-    figure, (cost_axes, overhead_axes) = plt.subplots(1, 2, figsize=(7.0, 2.9), gridspec_kw={'width_ratios': [1.55, 1.0]})
+    figure, (nll_axes, overhead_axes) = plt.subplots(1, 2, figsize=(7.0, 2.9), gridspec_kw={'width_ratios': [1.55, 1.0]})
     offsets = sorted(summary.offset.unique())
     span = (offsets[0] - 0.6, offsets[-1] + 0.6)
 
     for backbone in order:
         rows = summary[summary.backbone == backbone].sort_values('offset')
         colour = COLOURS[backbone]
-        pool_half = half_width(rows.pool_sd.iloc[0], rows.n_pool.iloc[0])
-        cost_axes.fill_between(span, [-pool_half] * 2, [pool_half] * 2, color=colour, alpha=0.18, linewidth=0, zorder=1)
+        pool_nll = rows.pool_nll.iloc[0]; pool_sd = rows.pool_sd.iloc[0]; pool_n = rows.n_pool.iloc[0]
+        pool_half = half_width(pool_sd, pool_n)
+        nll_axes.fill_between(span, [pool_nll - pool_half] * 2, [pool_nll + pool_half] * 2, 
+                              color=colour, alpha=0.18, linewidth=0, zorder=1)
         error = [half_width(sd, n) for sd, n in zip(rows.constrained_sd, rows.n_constrained)]
-        cost_axes.errorbar(rows.offset, rows.cost_vs_pool, yerr=error, color=colour, marker='o',
-                           markersize=3.2, elinewidth=0.6, capsize=1.6, zorder=3)
-        reference = rows.dropna(subset=['excess_nll'])
+        nll_axes.errorbar(rows.offset, rows.constrained_nll, yerr=error, color=colour, marker='o',
+                          markersize=3.2, elinewidth=0.6, capsize=1.6, zorder=3)
+        reference = rows.dropna(subset=['rejection_nll'])
         reference_error = [half_width(sd, n) for sd, n in zip(reference.rejection_sd, reference.n_rejection)]
-        cost_axes.errorbar(reference.offset, reference.rejection_nll - reference.pool_nll, yerr=reference_error,
-                           color=colour, marker='o', markersize=4.2, markerfacecolor='white', markeredgewidth=0.9,
-                           linestyle='none', elinewidth=0.6, capsize=1.6, zorder=4)
+        nll_axes.errorbar(reference.offset, reference.rejection_nll, yerr=reference_error,
+                          color=colour, marker='o', markersize=4.2, markerfacecolor='white', markeredgewidth=0.9,
+                          linestyle='none', elinewidth=0.6, capsize=1.6, zorder=4)
         last = rows.iloc[-1]
-        cost_axes.annotate(f'{backbone} ({last.length} aa)', xy=(last.offset, last.cost_vs_pool),
-                           xytext=(3, 0), textcoords='offset points', color=colour, va='center', fontsize=SIZES[1])
+        nll_axes.annotate(f'{backbone} ({last.length} aa)', xy=(last.offset, last.constrained_nll),
+                          xytext=(3, 0), textcoords='offset points', color=colour, va='center', fontsize=SIZES[1])
 
-    cost_axes.axhline(0.0, color='#999999', linewidth=0.6, zorder=1)
-    cost_axes.set_xlabel('net charge asked for, relative to the model baseline (e)', labelpad=8)
-    cost_axes.set_ylabel('cost (nats per residue)')
-    cost_axes.set_title('a  The ask: likelihood given up against unconstrained decoding', loc='left')
-    cost_axes.set_xticks(offsets)
-    cost_axes.set_xlim(span[0] - 0.3, span[1] + 5.2)
-    cost_axes.margins(y=0.08)
-    cost_axes.plot([], [], color='#444444', marker='o', markersize=3.2, label='decoded under the budget')
-    cost_axes.plot([], [], color='#444444', marker='o', markersize=4.2, markerfacecolor='white',
-                   markeredgewidth=0.9, linestyle='none', label='exact conditioning (rejection)')
-    cost_axes.legend(loc='upper center', bbox_to_anchor=(0.40, 1.0), fontsize=SIZES[1], handlelength=1.6, borderaxespad=0.2)
+    nll_axes.set_xlabel('net charge asked for, relative to the model baseline (e)', labelpad=8)
+    nll_axes.set_ylabel('negative log-likelihood (nats per residue)')
+    nll_axes.set_title('a  Absolute likelihood: constrained designs and exact conditioning', loc='left')
+    nll_axes.set_xticks(offsets)
+    nll_axes.set_xlim(span[0] - 0.3, span[1] + 5.2)
+    nll_axes.set_ylim(0, None)
+    nll_axes.margins(y=0.02)
+    nll_axes.plot([], [], color='#444444', marker='o', markersize=3.2, label='decoded under the budget')
+    nll_axes.plot([], [], color='#444444', marker='o', markersize=4.2, markerfacecolor='white',
+                  markeredgewidth=0.9, linestyle='none', label='exact conditioning (rejection sampling)')
+    nll_axes.legend(loc='upper center', bbox_to_anchor=(0.40, 1.0), fontsize=SIZES[1], handlelength=1.6, borderaxespad=0.2)
 
     for position, backbone in enumerate(order):
         rows = summary[summary.backbone == backbone].dropna(subset=['excess_nll']).copy()
