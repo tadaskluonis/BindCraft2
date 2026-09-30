@@ -14,6 +14,19 @@ os.environ.setdefault('JAX_COMPILATION_CACHE_DIR', os.path.join(os.environ.get('
 os.environ.setdefault('JAX_PERSISTENT_CACHE_ENABLE_XLA_CACHES', 'none')
 if 'triton_gemm' not in os.environ.get('XLA_FLAGS', ''):
     append_xla_flags('--xla_gpu_enable_triton_gemm=false')
+def usable_cpu_count() -> int:
+    return len(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else os.cpu_count() or 1
+
+PARALLEL_COMPILATION_CEILING = 16
+#BC2_PARALLEL_COMPILE=1 asks XLA to compile the design programs' modules on several threads, which shortens
+#the compile every new shape pays for. Compilation scheduling only: the executable, and so every number it
+#produces, is unchanged. Transferred from the 'parcompile' lever of the ColabDesign optimization kit in
+#anthropics/uplifting-biomolecular-modeling (Apache-2.0), and OFF by default because it measured slower here,
+#not faster - docs/source/fork-changes.md carries the pin and the measurement. The kit also sets
+#--xla_gpu_enable_llvm_module_compilation_parallelism, which the XLA in jax 0.11 no longer knows; an unknown
+#XLA flag aborts the process at start-up, which is the other reason this is opt-in.
+if os.environ.get('BC2_PARALLEL_COMPILE', '0') != '0' and 'compilation_parallelism' not in os.environ.get('XLA_FLAGS', ''):
+    append_xla_flags(f'--xla_gpu_force_compilation_parallelism={min(PARALLEL_COMPILATION_CEILING, usable_cpu_count())}')
 if os.environ.get('BC2_XLA_EXTRA', '').strip():
     append_xla_flags(os.environ['BC2_XLA_EXTRA'].strip())
 

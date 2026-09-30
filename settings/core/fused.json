@@ -1,0 +1,4 @@
+{
+  "description": "Turn on the optional cuEquivariance fused triangle-multiplication kernels (use_cueq). Measured slower than the default on an RTX 5090 - see docs/source/fork-changes.md - and kept for parts where the kernels win. Needs triton installed.",
+  "use_cueq": true
+}
