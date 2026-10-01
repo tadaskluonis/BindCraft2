@@ -4,9 +4,10 @@ Reads benchmarks/results/charge_tolerance_summary.csv (written by benchmarks/cha
 and writes benchmarks/results/charge_tolerance.png.
 
 Panel (a) is the absolute per-residue negative log-likelihood against the charge asked for, with
-four series per backbone: each arm decoded under the controller, and each arm's own
-rejection-sampling reference drawn from the same unconstrained pool. Panel (b) reduces each
-backbone to the mean overhead of the controller over that reference, one marker per arm.
+three series per backbone: the two arms decoded under the controller, and the exact-charge
+reference reached by rejection sampling from the free pool. That reference covers only the charges
+the pool actually produced, so it is shorter than the two decoded series. Panel (b) reduces each
+backbone to the mean overhead of the controller over that arm's own rejection reference.
 """
 import os
 import sys
@@ -69,15 +70,14 @@ def main() -> int:
                                 color=colour, marker=marker, ms=size, mfc=colour, mew=0, ls='none',
                                 elinewidth=0.5, capsize=1.2, zorder=4)
 
-        # each arm's own rejection-sampling reference, plotted only where the pool supplied one
-        for arm, marker, dashes, size in ((exact, 'o', (0, (4, 2)), 3.4), (window, '^', (0, (4, 1, 1, 1)), 3.6)):
-            reference = arm[arm.n_rejection > 0]
-            likelihood.plot(reference.offset, reference.rejection_nll, color=colour, lw=0.9,
-                            ls=dashes, alpha=0.9, zorder=2)
-            likelihood.errorbar(reference.offset, reference.rejection_nll,
-                                yerr=[interval(s, n) for s, n in zip(reference.rejection_sd, reference.n_rejection)],
-                                color=colour, marker=marker, ms=size, mfc='white', mec=colour, mew=0.7,
-                                ls='none', elinewidth=0.5, capsize=1.2, zorder=4)
+        # the exact-charge reference reached by rejection sampling, where the pool supplied one
+        reference = exact[exact.n_rejection > 0]
+        likelihood.plot(reference.offset, reference.rejection_nll, color=colour, lw=0.9,
+                        ls=(0, (4, 2)), alpha=0.9, zorder=2)
+        likelihood.errorbar(reference.offset, reference.rejection_nll,
+                            yerr=[interval(s, n) for s, n in zip(reference.rejection_sd, reference.n_rejection)],
+                            color=colour, marker='o', ms=3.4, mfc='white', mec=colour, mew=0.7,
+                            ls='none', elinewidth=0.5, capsize=1.2, zorder=4)
 
         last = exact.iloc[-1]
         likelihood.annotate(f'{backbone} · {int(rows.length.iloc[0])} aa',
@@ -89,18 +89,18 @@ def main() -> int:
     likelihood.set_title('a  Absolute likelihood', loc='left')
     likelihood.set_xticks(offsets)
     likelihood.set_xlim(offsets[0] - 1.0, offsets[-1] + 9.5)
-    likelihood.set_ylim(0.50, 1.34)
+    likelihood.set_ylim(0.56, 1.34)
 
     import matplotlib.lines as mlines
+    pool = int(summary.n_pool.iloc[0])
     key = [
         (mlines.Line2D([], [], color='#444444', marker='o', ms=2.8, mfc='#444444', mew=0, ls='-', lw=1.0),
          'exact ask, under the controller'),
-        (mlines.Line2D([], [], color='#444444', marker='o', ms=3.4, mfc='white', mec='#444444', mew=0.7,
-                       ls=(0, (4, 2)), lw=0.9), 'exact ask, rejection sampling'),
         (mlines.Line2D([], [], color='#444444', marker='^', ms=3.0, mfc='#444444', mew=0, ls=(0, (1, 1.6)), lw=1.0),
          f'±{tolerance:g} e window, under the controller'),
-        (mlines.Line2D([], [], color='#444444', marker='^', ms=3.6, mfc='white', mec='#444444', mew=0.7,
-                       ls=(0, (4, 1, 1, 1)), lw=0.9), f'±{tolerance:g} e window, rejection sampling'),
+        (mlines.Line2D([], [], color='#444444', marker='o', ms=3.4, mfc='white', mec='#444444', mew=0.7,
+                       ls=(0, (4, 2)), lw=0.9),
+         f'exact ask, rejection sampling from n = {pool} free designs'),
     ]
     likelihood.legend([handle for handle, _ in key], [label for _, label in key],
                       loc='lower left', bbox_to_anchor=(0.035, 0.005), handlelength=2.2,
@@ -124,7 +124,7 @@ def main() -> int:
     overhead.set_xticklabels([f'{backbone}\n{int(summary.loc[summary.backbone == backbone, "length"].iloc[0])} aa'
                               for backbone in order])
     overhead.set_xlim(-0.55, len(order) - 0.45)
-    overhead.set_ylabel('overhead vs rejection sampling\n(nats per residue)', labelpad=3)
+    overhead.set_ylabel("overhead vs the arm's own\nrejection reference (nats per residue)", labelpad=3)
     overhead.set_title('b  Controller overhead', loc='left')
     overhead.text(0.98, 0.96, 'lower = better', transform=overhead.transAxes, ha='right', va='top',
                   fontsize=TINY, color='#888888', style='italic')

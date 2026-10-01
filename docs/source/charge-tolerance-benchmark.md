@@ -36,6 +36,15 @@ per-design rows are in `charge_tolerance_designs.csv`.
 
 ![exact ask versus a +-2 e window](charge_tolerance.png)
 
+Panel (a) carries three series per backbone: the two arms as decoded under the controller, and the
+exact-charge reference reached by rejection sampling from that backbone's 2048 free designs. The
+reference stops where the pool does — a charge the pool never produced in 2048 draws has nothing to
+sample, and a charge it produced fewer than ten times is dropped as too noisy to average — which is
+why the hollow series is shorter than the two decoded ones and why rejection sampling is not a
+usable design method for a charge far from the model's preference. Panel (b) compares each arm with
+its own reference, so the window arm's reference there is the pool designs anywhere in c +- 2 rather
+than the hollow series drawn in panel (a).
+
 **The window is cheaper at every single target.** Across all 33 backbone x target combinations the
 window arm has lower per-residue negative log-likelihood than the exact arm, with no exceptions
 (paired t over the 33 differences, t = -9.19, p = 1.7e-10). Mean saving per backbone:
