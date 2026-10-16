@@ -91,14 +91,28 @@ SIDECHAIN_ATOMS = tuple(atom_name not in ('N', 'CA', 'C', 'CB', 'O') for atom_na
 def flexible_target_residues(residue_index: Array, target_template_mask: Array, target_flexibility: float) -> Array:
     return target_template_mask & (jnp.floor((residue_index + 1) * target_flexibility) > jnp.floor(residue_index * target_flexibility))
 
-def target_template_features(aatype: Array, atoms: Array, atom_mask: Array, flags: Array, residue_index: Array, target_flexibility: float=0.0) -> dict[str, Array]:
+def interchain_template_pairs(flags: Array, pose_template_binder: bool=False) -> Array:
+    """Which template pair features AlphaFold may read across chains.
+
+    AlphaFold masks the template pair representation to within-chain pairs, so a held binder
+    scaffold contributes its own internal geometry and nothing about where it sits on the target.
+    Returning False for a pair lets that pair through. Held rows only - TEMPLATE and not DESIGN -
+    so the designed body stays free while a grafted motif keeps its pose in the target frame.
+    Returns the scalar True, AlphaFold's own behaviour, when the feature is off.
+    """
+    if not pose_template_binder:
+        return jnp.asarray(True)
+    held_residue_mask = has_residue_flag(flags, ResidueFlags.TEMPLATE) & ~has_residue_flag(flags, ResidueFlags.DESIGN)
+    return ~(held_residue_mask[:, None] & held_residue_mask[None, :])
+
+def target_template_features(aatype: Array, atoms: Array, atom_mask: Array, flags: Array, residue_index: Array, target_flexibility: float=0.0, pose_template_binder: bool=False) -> dict[str, Array]:
     template_residue_mask = has_residue_flag(flags, ResidueFlags.TEMPLATE)
     flexible_mask = flexible_target_residues(residue_index, template_residue_mask & ~has_residue_flag(flags, ResidueFlags.DESIGN), target_flexibility) if target_flexibility else jnp.zeros_like(template_residue_mask)
     template_aatype = jnp.where(template_residue_mask & ~flexible_mask, aatype, 21)
     template_all_atom_mask = atom_mask & template_residue_mask[:, None] & ~(flexible_mask[:, None] & jnp.asarray(SIDECHAIN_ATOMS))
     template_all_atom_positions = jnp.where(template_residue_mask[:, None, None], atoms, 0.0)
     template_beta_coordinates, template_beta_mask = af_modules.pseudo_beta_fn(template_aatype, template_all_atom_positions, template_all_atom_mask)
-    return {'template_aatype': template_aatype[None].astype(jnp.int32), 'template_all_atom_positions': template_all_atom_positions[None].astype(jnp.float32), 'template_all_atom_mask': template_all_atom_mask[None].astype(jnp.float32), 'template_pseudo_beta': template_beta_coordinates[None].astype(jnp.float32), 'template_pseudo_beta_mask': template_beta_mask[None].astype(jnp.float32), 'template_mask': jnp.ones((1,), dtype=jnp.float32), 'mask_template_interchain': jnp.asarray(True)}
+    return {'template_aatype': template_aatype[None].astype(jnp.int32), 'template_all_atom_positions': template_all_atom_positions[None].astype(jnp.float32), 'template_all_atom_mask': template_all_atom_mask[None].astype(jnp.float32), 'template_pseudo_beta': template_beta_coordinates[None].astype(jnp.float32), 'template_pseudo_beta_mask': template_beta_mask[None].astype(jnp.float32), 'template_mask': jnp.ones((1,), dtype=jnp.float32), 'mask_template_interchain': interchain_template_pairs(flags, pose_template_binder)}
 
 def residue_entity_ids(chain_names: tuple[str, ...], chain_lengths: tuple[int, ...], multi_chain_binders: tuple[tuple[str, ...], ...]=()) -> Array:
     shared_entity = {name: min(group) for group in multi_chain_binders for name in group}
@@ -125,13 +139,13 @@ def cyclic_sequence_offsets(residue_index: Array, asym_id: Array, flags: Array, 
         cyclic_distance = jnp.where(jnp.abs(cyclic_distance) > 2, 32 * jnp.sign(cyclic_distance), cyclic_distance)
     return jnp.where(cyclic_pairs, cyclic_distance * jnp.sign(offsets), offsets).astype(jnp.int32)
 
-def alphafold_input_features(sequence: Array, sequence_profile: Array, atoms: Array, atom_mask: Array, residue_index: Array, asym_id: Array, seq_mask: Array, flags: Array, dropout: Array, cyclic_offset_mode: str='direction', entity_id: Array | None=None, target_flexibility: float=0.0, bigbang_initialization: bool=False) -> dict[str, Array]:
+def alphafold_input_features(sequence: Array, sequence_profile: Array, atoms: Array, atom_mask: Array, residue_index: Array, asym_id: Array, seq_mask: Array, flags: Array, dropout: Array, cyclic_offset_mode: str='direction', entity_id: Array | None=None, target_flexibility: float=0.0, bigbang_initialization: bool=False, pose_template_binder: bool=False) -> dict[str, Array]:
     length = sequence.shape[0]
     aatype = sequence.argmax(-1).astype(jnp.int32)
     mask = seq_mask[:, None]
     entity_id = asym_id if entity_id is None else entity_id
     msa_feat = jnp.zeros((1, length, 49)).at[:, :, 0:20].set(sequence[None]).at[:, :, 25:45].set(sequence_profile[None])
-    return {'aatype': aatype, 'residue_index': residue_index, 'offset': cyclic_sequence_offsets(residue_index, asym_id, flags, seq_mask, cyclic_offset_mode), 'asym_id': asym_id, 'entity_id': entity_id, 'sym_id': asym_id, 'seq_mask': seq_mask, 'msa_mask': jnp.ones((1, length)) * seq_mask[None], 'target_feat': sequence, 'msa_feat': msa_feat, 'extra_msa': jnp.zeros((1, length), dtype=jnp.int32), 'extra_msa_mask': jnp.zeros((1, length), dtype=jnp.float32), 'extra_has_deletion': jnp.zeros((1, length), dtype=jnp.float32), 'extra_deletion_value': jnp.zeros((1, length)), 'all_atom_positions': atoms.astype(jnp.float32), 'all_atom_mask': atom_mask.astype(jnp.float32), 'atom14_atom_exists': jnp.where(mask, jnp.asarray(residue_constants.restype_atom14_mask)[aatype], 0), 'atom37_atom_exists': jnp.where(mask, jnp.asarray(residue_constants.restype_atom37_mask)[aatype], 0), 'residx_atom14_to_atom37': jnp.where(mask, jnp.asarray(residue_constants.restype_atom14_to_atom37)[aatype], 0), 'residx_atom37_to_atom14': jnp.where(mask, jnp.asarray(residue_constants.restype_atom37_to_atom14)[aatype], 0), 'use_dropout': dropout, 'prev': {'prev_msa_first_row': jnp.zeros((length, 256)), 'prev_pair': jnp.zeros((length, length, 128)), 'prev_pos': jnp.zeros((length, 37, 3))}, **({'initial_atom_pos': atoms.astype(jnp.float32)} if bigbang_initialization else {}), **target_template_features(aatype, atoms, atom_mask, flags, residue_index, target_flexibility)}
+    return {'aatype': aatype, 'residue_index': residue_index, 'offset': cyclic_sequence_offsets(residue_index, asym_id, flags, seq_mask, cyclic_offset_mode), 'asym_id': asym_id, 'entity_id': entity_id, 'sym_id': asym_id, 'seq_mask': seq_mask, 'msa_mask': jnp.ones((1, length)) * seq_mask[None], 'target_feat': sequence, 'msa_feat': msa_feat, 'extra_msa': jnp.zeros((1, length), dtype=jnp.int32), 'extra_msa_mask': jnp.zeros((1, length), dtype=jnp.float32), 'extra_has_deletion': jnp.zeros((1, length), dtype=jnp.float32), 'extra_deletion_value': jnp.zeros((1, length)), 'all_atom_positions': atoms.astype(jnp.float32), 'all_atom_mask': atom_mask.astype(jnp.float32), 'atom14_atom_exists': jnp.where(mask, jnp.asarray(residue_constants.restype_atom14_mask)[aatype], 0), 'atom37_atom_exists': jnp.where(mask, jnp.asarray(residue_constants.restype_atom37_mask)[aatype], 0), 'residx_atom14_to_atom37': jnp.where(mask, jnp.asarray(residue_constants.restype_atom14_to_atom37)[aatype], 0), 'residx_atom37_to_atom14': jnp.where(mask, jnp.asarray(residue_constants.restype_atom37_to_atom14)[aatype], 0), 'use_dropout': dropout, 'prev': {'prev_msa_first_row': jnp.zeros((length, 256)), 'prev_pair': jnp.zeros((length, length, 128)), 'prev_pos': jnp.zeros((length, 37, 3))}, **({'initial_atom_pos': atoms.astype(jnp.float32)} if bigbang_initialization else {}), **target_template_features(aatype, atoms, atom_mask, flags, residue_index, target_flexibility, pose_template_binder)}
 
 def recycled_alphafold_outputs(alphafold_runner: af_model.RunModel, model_parameters: Array, key: Array, model_inputs: dict, num_recycle: int) -> dict:
     recycle_keys = jax.random.split(key, num_recycle + 1)
@@ -206,7 +220,7 @@ def resolve_subbatch_size(residue_count: int, subbatch_size: int | None | str='a
     return LARGE_COMPLEX_SUBBATCH_SIZE if residue_count > SUBBATCH_RESIDUE_THRESHOLD else None
 
 class AlphaFoldDesignModel(DifferentiableProteinPredictor):
-    def __init__(self, presets: str | tuple[str, ...]='model_1_ptm', data_dir: str | None=None, key: Array | None=None, max_cache_size: int=8, models: tuple[str, ...] | None=None, num_recycle: int=1, cyclic_offset_mode: str='direction', subbatch_size: int | None | str='auto', length_bucket_size: int=DEFAULT_LENGTH_BUCKET, attention_backend: str='auto', use_cueq: bool=False, dropout: bool=True, multi_chain_binders: tuple[tuple[str, ...], ...]=(), target_pad_length: int=0, target_flexibility: float=0.0, bigbang_initialization: bool=False, amino_acid_bias: dict[str, float] | None=None):
+    def __init__(self, presets: str | tuple[str, ...]='model_1_ptm', data_dir: str | None=None, key: Array | None=None, max_cache_size: int=8, models: tuple[str, ...] | None=None, num_recycle: int=1, cyclic_offset_mode: str='direction', subbatch_size: int | None | str='auto', length_bucket_size: int=DEFAULT_LENGTH_BUCKET, attention_backend: str='auto', use_cueq: bool=False, dropout: bool=True, multi_chain_binders: tuple[tuple[str, ...], ...]=(), target_pad_length: int=0, target_flexibility: float=0.0, bigbang_initialization: bool=False, pose_template_binder: bool=False, amino_acid_bias: dict[str, float] | None=None):
         self.cyclic_offset_mode = cyclic_offset_mode
         self.target_pad_length = target_pad_length
         self.multi_chain_binders = multi_chain_binders
@@ -218,6 +232,7 @@ class AlphaFoldDesignModel(DifferentiableProteinPredictor):
         self.num_recycle = num_recycle
         self.target_flexibility = target_flexibility
         self.bigbang_initialization = bigbang_initialization
+        self.pose_template_binder = pose_template_binder
         #one row of log-odds read off the settings, not an array carried beside every chain
         self.amino_acid_bias = None if not amino_acid_bias else jnp.asarray([amino_acid_bias.get(amino_acid, 0.0) for amino_acid in AMINO_ACIDS], dtype=jnp.float32)
         self.subbatch_size = subbatch_size
@@ -272,13 +287,13 @@ class AlphaFoldDesignModel(DifferentiableProteinPredictor):
     def _compiled_complex_prediction(self, model: str, padded_length: int) -> Callable:
         model_family = self.model_families[model]
         subbatch_size = resolve_subbatch_size(padded_length, self.subbatch_size)
-        cache_key = model_family, padded_length, subbatch_size, self.multi_chain_binders, self.num_recycle, self.target_flexibility, self.bigbang_initialization
+        cache_key = model_family, padded_length, subbatch_size, self.multi_chain_binders, self.num_recycle, self.target_flexibility, self.bigbang_initialization, self.pose_template_binder
         compiled_prediction = self.prediction_compile_cache.get(cache_key)
         if compiled_prediction is None:
             alphafold_runner = self._alphafold_runner(model_family, subbatch_size)
             def predict_complex_arrays(model_parameters: Array, key: Array, sequence: Array, atoms: Array, atom_mask: Array, residue_index: Array, asym_id: Array, entity_id: Array, interface_asym_id: Array, seq_mask: Array, flags: Array, dropout: Array, softmax_weight: Array, one_hot_weight: Array, temperature: Array, logit_scale: Array):
                 sequence_features, sequence_profile = prepare_design_sequence_features(sequence, flags, softmax_weight, one_hot_weight, temperature, logit_scale, self.amino_acid_bias)
-                model_inputs = alphafold_input_features(sequence_features, sequence_profile, atoms, atom_mask, residue_index, asym_id, seq_mask, flags, dropout, self.cyclic_offset_mode, entity_id, self.target_flexibility, self.bigbang_initialization)
+                model_inputs = alphafold_input_features(sequence_features, sequence_profile, atoms, atom_mask, residue_index, asym_id, seq_mask, flags, dropout, self.cyclic_offset_mode, entity_id, self.target_flexibility, self.bigbang_initialization, self.pose_template_binder)
                 alphafold_outputs = recycled_alphafold_outputs(alphafold_runner, model_parameters, key, model_inputs, self.num_recycle)
                 predicted_atom_positions = alphafold_outputs['structure_module']['final_atom_positions'].astype(jnp.float16)
                 predicted_atom_mask = alphafold_outputs['structure_module']['final_atom_mask'].astype(bool)
@@ -331,7 +346,7 @@ class AlphaFoldDesignModel(DifferentiableProteinPredictor):
         model_family = self.model_families[model]
         loss_signature = tuple((name, losses[name].function, losses[name].required_states) for name in sorted(losses))
         state_subbatch_sizes = tuple((state_name, resolve_subbatch_size(sum(chain_lengths), self.subbatch_size)) for state_name, _, chain_lengths in complex_shapes)
-        cache_key = model_family, complex_shapes, reference_shapes, loss_signature, state_subbatch_sizes, self.multi_chain_binders, self.num_recycle, self.target_flexibility, self.bigbang_initialization
+        cache_key = model_family, complex_shapes, reference_shapes, loss_signature, state_subbatch_sizes, self.multi_chain_binders, self.num_recycle, self.target_flexibility, self.bigbang_initialization, self.pose_template_binder
         compiled_gradient = self.gradient_compile_cache.get(cache_key)
         if compiled_gradient is None:
             state_alphafold_runners = {state_name: self._alphafold_runner(model_family, subbatch_size) for state_name, subbatch_size in state_subbatch_sizes}
@@ -340,7 +355,7 @@ class AlphaFoldDesignModel(DifferentiableProteinPredictor):
                 entity_id = residue_entity_ids(chain_names, chain_lengths, self.multi_chain_binders)
                 seq_mask = real_residue_weights(flags)
                 sequence_features, sequence_profile = prepare_design_sequence_features(sequence, flags, softmax_weight, one_hot_weight, temperature, logit_scale, self.amino_acid_bias)
-                model_inputs = alphafold_input_features(sequence_features, sequence_profile, atoms, atom_mask, residue_index, asym_id, seq_mask, flags, dropout, self.cyclic_offset_mode, entity_id, self.target_flexibility, self.bigbang_initialization)
+                model_inputs = alphafold_input_features(sequence_features, sequence_profile, atoms, atom_mask, residue_index, asym_id, seq_mask, flags, dropout, self.cyclic_offset_mode, entity_id, self.target_flexibility, self.bigbang_initialization, self.pose_template_binder)
                 alphafold_outputs = recycled_alphafold_outputs(alphafold_runner, model_parameters, key, model_inputs, self.num_recycle)
                 predicted_atom_positions = alphafold_outputs['structure_module']['final_atom_positions'].astype(jnp.float16)
                 predicted_atom_mask = alphafold_outputs['structure_module']['final_atom_mask'].astype(bool)
