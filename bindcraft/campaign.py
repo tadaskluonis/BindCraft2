@@ -71,25 +71,37 @@ def apply_desperation_settings(design_model, validation_model, settings: dict) -
         if prediction_model is not None:
             prediction_model.target_flexibility = float(settings.get('target_flexibility', DEFAULT_SETTINGS['target_flexibility']))
             prediction_model.pose_template_binder = bool(settings.get('pose_template_binder', DEFAULT_SETTINGS['pose_template_binder']))
-    narrow_pool_for_pose_template(design_model, settings)
+    narrow_pool_for_pose_template(design_model, settings, validation_model)
     if design_model is not None:
         design_model.bigbang_initialization = design_seeds_from_given_coordinates(settings)
     if validation_model is not None:
         validation_model.bigbang_initialization = validation_seeds_from_given_coordinates(settings)
 
-def narrow_pool_for_pose_template(design_model, settings: dict) -> None:
-    """Keep only the models that read interchain template pairs, unless the campaign named its own.
+def narrow_pool_for_pose_template(design_model, settings: dict, validation_model=None) -> None:
+    """Keep only the models that read interchain template pairs, on both sides of the split.
 
     pose_template_binder is worth nothing on a model that ignores those features, and BindCraft2
     draws one model per prediction, so leaving the full pool in place holds the graft on a minority
-    of steps and lets it wander on the rest. A campaign that sets design_models itself is left alone.
+    of steps and lets it wander on the rest. Validation matters just as much: narrowing design alone
+    leaves refold re-predicting on models that ignore the template, the graft leaves the pocket, and
+    every redesign fails the hotspot filter at Hotspot_Contact_Fraction 0.0 however good the
+    trajectory was. Where two template-reading models are available they are split, design first, so
+    validation stays held out from design rather than scoring a design with the model that drew it.
+    A campaign that names design_models itself is left alone.
     """
     if design_model is None or not settings.get('pose_template_binder') or settings.get('design_models'):
         return
     narrowed = tuple(model for model in design_model.models if model in POSE_TEMPLATE_POOL)
     if narrowed and narrowed != design_model.models:
-        print(f'pose template: design narrowed to {narrowed}, the models that read interchain template pairs', flush=True)
-        design_model.models = narrowed
+        print(f'pose template: design narrowed to {narrowed[:1]}, the models that read interchain template pairs', flush=True)
+        design_model.models = narrowed[:1] if len(narrowed) > 1 else narrowed
+    if validation_model is None:
+        return
+    held_out = tuple(model for model in POSE_TEMPLATE_POOL if model not in design_model.models)
+    validation_narrowed = held_out or tuple(design_model.models)
+    if validation_narrowed != validation_model.models:
+        print(f'pose template: validation narrowed to {validation_narrowed}, held out from design {design_model.models}', flush=True)
+        validation_model.models = validation_narrowed
 
 def desperate_prediction_pools(design_model, validation_model, settings: dict, build_validation_model) -> tuple:
     selected_models = select_design_and_validation_models(settings, MULTIMER_POOL, MONOMER_POOL)
