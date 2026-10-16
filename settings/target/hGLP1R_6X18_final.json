@@ -1,0 +1,12 @@
+{
+  "description": "Human GLP-1R from 6X18 chain R. ECD lid 29-127 removed, C-tail 397-423 removed, TM bundle cut at -22 A on the pore axis, floating 128-129 island dropped. 184 residues in four segments: 136-161, 181-246, 267-321, 360-396. 13 extremely exposed membrane-facing hydrophobics charge-swapped to Glu/Lys. Hotspots Arg190, Gln234. Coldspots cover the linker tail 136-139, every exposed membrane-facing hydrophobic, and the 10 surfaces the cut genuinely exposed. Gln213 and Trp214 are excluded: they are solvent-exposed ECL1 residues in the intact receptor (Trp214 at 128 A2 with the lid present) and only gained area because the lid was removed, which is not a cut artefact. forced_targeting OFF - pose_template_binder does that job.",
+  "targets": [
+    {
+      "name": "hGLP1R_6X18_final",
+      "target_path": "/home/tadas/code/adaptyv-bio-comp-3/bc2/structures/glp1r_final_target.pdb",
+      "chains": "R",
+      "hotspots": "190,234",
+      "coldspots": "136,137,138,139,143,146,150,154,160,161,181,182,183,184,192,195,196,243,267,268,269,272,274,278,279,311,315,319,321,360,362,366,369,379,382,385,390,393,394,396"
+    }
+  ]
+}
