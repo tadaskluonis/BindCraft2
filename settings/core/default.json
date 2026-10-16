@@ -39,6 +39,7 @@
   "design_recycles": 1,
   "target_flexibility": 0.0,
   "bigbang_initialization": false,
+  "pose_template_binder": false,
   "initial_guess": false,
   "desperation": true,
   "weights_plddt_loss": 0.1,

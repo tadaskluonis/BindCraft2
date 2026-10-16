@@ -70,6 +70,7 @@ def apply_desperation_settings(design_model, validation_model, settings: dict) -
     for prediction_model in (design_model, validation_model):
         if prediction_model is not None:
             prediction_model.target_flexibility = float(settings.get('target_flexibility', DEFAULT_SETTINGS['target_flexibility']))
+            prediction_model.pose_template_binder = bool(settings.get('pose_template_binder', DEFAULT_SETTINGS['pose_template_binder']))
     if design_model is not None:
         design_model.bigbang_initialization = design_seeds_from_given_coordinates(settings)
     if validation_model is not None:
