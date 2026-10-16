@@ -1,0 +1,12 @@
+{
+  "description": "Human GLP-1R from 6X18 chain R, ECD lid removed, TM bundle cut at -22 A on the pore axis (pocket floor intact: 0 A2 spurious pore exposure vs the uncut bundle); 186 residues in five segments. 39 outward-facing hydrophobics charge-swapped to alternating Glu/Lys. Hotspots Arg190 and Gln234 only; 59 coldspots.",
+  "targets": [
+    {
+      "name": "hGLP1R_6X18_cut22",
+      "target_path": "/home/tadas/code/adaptyv-bio-comp-3/bc2/structures/glp1r_cut22_target.pdb",
+      "chains": "R",
+      "hotspots": "190,234",
+      "coldspots": "128,129,136,146,147,150,153,154,156,158,159,160,161,181,182,183,184,185,188,192,195,196,213,214,216,243,245,246,267,268,269,270,272,274,276,278,279,307,308,311,314,315,318,319,320,321,360,362,365,366,367,369,370,379,381,382,393,394,396"
+    }
+  ]
+}

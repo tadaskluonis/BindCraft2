@@ -287,6 +287,7 @@ The table lists every objective. Default weights describe the standard binder be
 | `weights_binder_intra_coldspot` | off | Keep paratope loops off the binder’s non-binding face. |
 | `weights_binder_intra_hotspot` | off | Pack paratope loops against that face. |
 | `weights_coldspot_repel` | off | Keep the binder away from target coldspots. |
+| `weights_scaffold_pose` | off, 1.0 under `pose_template_binder` | Hold a fold-conditioned scaffold's pose relative to the target, by comparing the held rows' distances to every target row, predicted against input. Held rows only, so designed rows stay free. Unlike the template pair features it carries a gradient at every optimiser step, which is what actually keeps a grafted motif in its pocket through screen, refine and anneal rather than only in the dropout-free harden stage. |
 | `weights_interface_contacts` | 1.0 | Promote binder–target contacts. |
 | `weights_non_contact` | off | Discourage contacts with off-targets. |
 | `weights_binder_contacts` | 1.0 | Promote contacts within the binder. |

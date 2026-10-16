@@ -400,6 +400,44 @@ def target_rmsd_loss(protein_states: ProteinStates, predictions: StructurePredic
     target = resolve_target_chain(protein_states[prediction_state], target, prediction_state)
     return template_distance_deviation(protein_states[prediction_state][target], predictions[prediction_state].protein_complex[target], jnp.asarray(1.0))
 
+def cross_chain_distance_deviation(row_template: Protein, row_predicted: Protein, reference_template: Protein, reference_predicted: Protein, row_mask: Array) -> Array:
+    """Root-mean-square error of the row-to-reference CA distances, predicted against input.
+
+    template_distance_deviation does this within one chain, which pins a chain's internal geometry.
+    Taken across two chains it pins their relative placement instead: every held row keeps its
+    distance to every target row, which fixes position and orientation without ever superposing
+    anything, so no frame has to be chosen and the gradient reaches the binder at every step.
+    """
+    row_template_coordinates, row_template_mask = chain_atom_coordinates(row_template)
+    row_predicted_coordinates, row_predicted_mask = chain_atom_coordinates(row_predicted)
+    reference_template_coordinates, reference_template_mask = chain_atom_coordinates(reference_template)
+    reference_predicted_coordinates, reference_predicted_mask = chain_atom_coordinates(reference_predicted)
+    rows_valid = row_template_mask * row_predicted_mask * row_mask
+    reference_valid = reference_template_mask * reference_predicted_mask
+    pair_mask = rows_valid[:, None] * reference_valid[None, :]
+    distance_error = pairwise_atom_distances(row_predicted_coordinates, reference_predicted_coordinates, 1e-08) - pairwise_atom_distances(row_template_coordinates, reference_template_coordinates, 1e-08)
+    return jnp.sqrt(_masked_mean(jnp.square(distance_error), pair_mask) + 1e-08) * (pair_mask.sum() > 0)
+
+@loss('scaffold_pose', target_weighting='every_target')
+def scaffold_pose_loss(protein_states: ProteinStates, predictions: StructurePredictions, prediction_state: str='complex', binder: str='binder', target: str='target') -> Array:
+    """Hold the pose of a fold-conditioned scaffold relative to the target.
+
+    Applies to the held rows only - TEMPLATE and not DESIGN - so a motif grafted from a complex
+    and supplied in the target's own coordinate frame keeps the placement it was given while the
+    designed rows stay free. Use it when the graft's pose is the point, such as an agonist
+    N-terminus sitting in a receptor pocket. Leave it off for a scaffold whose placement is what
+    the trajectory is meant to discover.
+    """
+    prediction_state = resolve_prediction_state(predictions, prediction_state)
+    protein_complex = protein_states[prediction_state]
+    predicted_complex = predictions[prediction_state].protein_complex
+    target = resolve_target_chain(protein_complex, target, prediction_state)
+    deviations = []
+    for name in binder_copy_chains(protein_complex, binder):
+        held_rows = (has_residue_flag(protein_complex[name].flags, ResidueFlags.TEMPLATE) & ~has_residue_flag(protein_complex[name].flags, ResidueFlags.DESIGN)).astype(jnp.float32)
+        deviations.append(cross_chain_distance_deviation(protein_complex[name], predicted_complex[name], protein_complex[target], predicted_complex[target], held_rows))
+    return jnp.mean(jnp.stack(deviations))
+
 @loss('target_rigidity', target_weighting='every_target')
 def target_rigidity_loss(protein_states: ProteinStates, predictions: StructurePredictions, prediction_state: str='complex', target: str='target') -> Array:
     prediction_state = resolve_prediction_state(predictions, prediction_state)
