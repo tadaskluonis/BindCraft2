@@ -434,4 +434,7 @@ class AlphaFoldDesignModel(DifferentiableProteinPredictor):
         sequence_gradients = {chain_source_names[name]: shared_chain_gradients[name][:len(original_shared_chains[chain_source_names[name]])] for name in shared_chain_names}
         return predictions, sequence_gradients, design_loss
 MULTIMER_POOL: tuple[str, ...] = tuple(f'model_{i}_multimer_v3' for i in range(1, 6))
+#the only models that place a held scaffold where its interchain template pairs say it belongs;
+#1, 3 and 4 ignore them entirely, so a random draw from the whole pool holds the graft on a minority of steps
+POSE_TEMPLATE_POOL: tuple[str, ...] = ('model_2_multimer_v3', 'model_5_multimer_v3')
 MONOMER_POOL: tuple[str, ...] = ('model_1_ptm', 'model_2_ptm')

@@ -2,7 +2,7 @@ import os
 import threading
 import time
 import jax
-from bindcraft.af2 import AlphaFoldDesignModel, MONOMER_POOL, MULTIMER_POOL, campaign_length_bucket, padded_prediction_length
+from bindcraft.af2 import AlphaFoldDesignModel, MONOMER_POOL, MULTIMER_POOL, POSE_TEMPLATE_POOL, campaign_length_bucket, padded_prediction_length
 from bindcraft.campaign_output import trajectory_output_path, CampaignProgress, DEFAULT_PROJECT_FOLDER, RANKING_METRIC, RANK_STAGE, REFOLD_STAGE, TRAJECTORY_STAGE, accepted_state_suffixes, append_accepted_design, append_campaign_metrics, archive_trajectory_folder, designed_span_stamp, discard_trajectory_structures, drawn_weight_stamp, model_score_stamp, rank_accepted_designs, reprediction_facts, structure_metadata, stage_folder, stage_table, target_ordered_row, timing_stamp, weighted_target_order, write_campaign_metadata, write_campaign_summary
 from bindcraft.campaign_log import binder_optimization, campaign_budget_exhausted, campaign_closed, campaign_header, campaign_label, design_worker_index, speaks_for_the_campaign, trajectory_already_designed, trajectory_design_label, trajectory_header
 from bindcraft.design_identity import design_hash, design_name
@@ -71,10 +71,25 @@ def apply_desperation_settings(design_model, validation_model, settings: dict) -
         if prediction_model is not None:
             prediction_model.target_flexibility = float(settings.get('target_flexibility', DEFAULT_SETTINGS['target_flexibility']))
             prediction_model.pose_template_binder = bool(settings.get('pose_template_binder', DEFAULT_SETTINGS['pose_template_binder']))
+    narrow_pool_for_pose_template(design_model, settings)
     if design_model is not None:
         design_model.bigbang_initialization = design_seeds_from_given_coordinates(settings)
     if validation_model is not None:
         validation_model.bigbang_initialization = validation_seeds_from_given_coordinates(settings)
+
+def narrow_pool_for_pose_template(design_model, settings: dict) -> None:
+    """Keep only the models that read interchain template pairs, unless the campaign named its own.
+
+    pose_template_binder is worth nothing on a model that ignores those features, and BindCraft2
+    draws one model per prediction, so leaving the full pool in place holds the graft on a minority
+    of steps and lets it wander on the rest. A campaign that sets design_models itself is left alone.
+    """
+    if design_model is None or not settings.get('pose_template_binder') or settings.get('design_models'):
+        return
+    narrowed = tuple(model for model in design_model.models if model in POSE_TEMPLATE_POOL)
+    if narrowed and narrowed != design_model.models:
+        print(f'pose template: design narrowed to {narrowed}, the models that read interchain template pairs', flush=True)
+        design_model.models = narrowed
 
 def desperate_prediction_pools(design_model, validation_model, settings: dict, build_validation_model) -> tuple:
     selected_models = select_design_and_validation_models(settings, MULTIMER_POOL, MONOMER_POOL)
