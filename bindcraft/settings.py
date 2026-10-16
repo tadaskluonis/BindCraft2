@@ -200,6 +200,9 @@ def configure_negative_selection(settings: dict, request: ConfigurationRequest) 
     settings.setdefault('max_detarget_interface_residues_final', DEFAULT_DETARGET_INTERFACE_RESIDUES)
 
 def configure_fold_conditioning(settings: dict, request: ConfigurationRequest) -> None:
+    #a graft whose pose is templated is also held there by a loss, because the template pair features alone do not move the prediction
+    if settings.get('pose_template_binder') and 'weights_scaffold_pose' not in request.overrides:
+        settings.setdefault('weights_scaffold_pose', 1.0)
     if isinstance(settings['filters'], dict):
         settings['filters'].setdefault('Binder_RMSD', {'threshold': None, 'higher': False})
     #a scaffold naming its own framework rows is held off those rows, which is how a VHH keeps the face its long CDR3 packs onto designable; one naming none is held off the whole binder outside its paratope
