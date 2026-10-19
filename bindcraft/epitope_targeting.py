@@ -50,7 +50,7 @@ def build_lysine_sidechain(residue_atoms: np.ndarray, environment_coordinates: n
 
 def lysinate_target(target: Protein, epitope_cutoff: float=EPITOPE_CUTOFF) -> Protein:
     atoms, atom_mask = np.array(target.atoms, dtype=np.float64), np.array(target.atom_mask, dtype=bool)
-    hotspot_residues = np.asarray(has_residue_flag(target.flags, ResidueFlags.HOTSPOT))
+    hotspot_residues = np.asarray(has_residue_flag(target.flags, ResidueFlags.HOTSPOT | ResidueFlags.SOFTHOTSPOT))
     if not hotspot_residues.any():
         raise ValueError('Epitope-focused design needs target hotspots to define the region kept at wild type')
     if not all(atom_mask[:, ATOM_INDEX[name]].all() for name in ('N', 'CA', 'C')):

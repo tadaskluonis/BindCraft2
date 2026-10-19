@@ -193,7 +193,7 @@ def plddt_loss(protein_states: ProteinStates, predictions: StructurePredictions,
 def target_plddt_loss(protein_states: ProteinStates, predictions: StructurePredictions, prediction_state: str='complex', target: str='target') -> Array:
     prediction_state = resolve_prediction_state(predictions, prediction_state)
     target = resolve_target_chain(protein_states[prediction_state], target, prediction_state)
-    hotspot_mask = has_residue_flag(protein_states[prediction_state][target].flags, ResidueFlags.HOTSPOT)
+    hotspot_mask = has_residue_flag(protein_states[prediction_state][target].flags, ResidueFlags.HOTSPOT | ResidueFlags.SOFTHOTSPOT)
     return _masked_mean(1 - predictions[prediction_state].metrics['plddt'][chain_residue_slices(protein_states[prediction_state])[target]], jnp.where(hotspot_mask.any(), hotspot_mask, real_residue_mask(protein_states[prediction_state][target].flags)))
 
 @loss('experimentally_resolved')
@@ -547,7 +547,7 @@ def coldspot_repel_loss(protein_states: ProteinStates, predictions: StructurePre
     protein_complex = protein_states[prediction_state]
     distogram = predictions[prediction_state].metrics['distogram']
     chain_slices, residue_count = chain_residue_slices(protein_complex), distogram.shape[0]
-    coldspot_mask = expand_chain_residue_mask(residue_count, chain_slices[target], has_residue_flag(protein_complex[target].flags, ResidueFlags.COLDSPOT))
+    coldspot_mask = expand_chain_residue_mask(residue_count, chain_slices[target], has_residue_flag(protein_complex[target].flags, ResidueFlags.COLDSPOT | ResidueFlags.SOFTCOLDSPOT))
     binder_mask = binder_binding_mask(protein_complex, binder, residue_count)
     return nonbinding_residue_repulsion_loss(distogram, coldspot_mask, binder_mask, cutoff, contacts_per_residue)
 
@@ -582,7 +582,7 @@ def interface_contacts_loss(protein_states: ProteinStates, predictions: Structur
     chain_slices, residue_count = chain_residue_slices(protein_states[prediction_state]), distogram.shape[0]
     real_mask = complex_residue_weights(protein_states[prediction_state]) > 0
     binder_mask, target_mask = binder_binding_mask(protein_states[prediction_state], binder, residue_count), chain_residue_mask(residue_count, chain_slices[target]) & real_mask
-    hotspot_mask = expand_chain_residue_mask(residue_count, chain_slices[target], has_residue_flag(protein_states[prediction_state][target].flags, ResidueFlags.HOTSPOT))
+    hotspot_mask = expand_chain_residue_mask(residue_count, chain_slices[target], has_residue_flag(protein_states[prediction_state][target].flags, ResidueFlags.HOTSPOT | ResidueFlags.SOFTHOTSPOT))
     pair_loss = distogram_pair_loss(distogram, distogram_bin_distances(distogram.shape[-1]) < cutoff, False)
     hotspot_contacts = mean_selected_contact_loss(pair_loss, contacts_per_residue, contact_residue_count, hotspot_mask, hotspot_mask[:, None] & binder_mask[None, :])
     surface_contacts = mean_selected_contact_loss(pair_loss, contacts_per_residue, contact_residue_count, binder_mask, binder_mask[:, None] & target_mask[None, :])

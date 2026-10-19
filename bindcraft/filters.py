@@ -209,6 +209,7 @@ def off_paratope_contact_metric(protein_states: ProteinStates, predictions: Stru
 def hotspot_contact_metric(protein_states: ProteinStates, predictions: StructurePredictions, prediction_state: str='complex', binder: str='binder', target: str='target', cutoff: float=4.0) -> float | None:
     prediction_state = resolve_prediction_state(predictions, prediction_state)
     target = resolve_target_chain(predictions[prediction_state].protein_complex, target, prediction_state)
+    #SOFTHOTSPOT is deliberately absent: a soft hotspot steers the losses but is not required by this gate.
     hotspot_residues = has_residue_flag(protein_states[prediction_state][target].flags, ResidueFlags.HOTSPOT)
     if not bool(hotspot_residues.any()):
         return None
@@ -404,7 +405,7 @@ def induced_fit_tm_metric(protein_states: ProteinStates, predictions: StructureP
 def epitope_contact_masks(protein_states: ProteinStates, predictions: StructurePredictions, prediction_state: str, binder: str, target: str, cutoff: float, epitope_cutoff: float):
     target = resolve_target_chain(predictions[prediction_state].protein_complex, target, prediction_state)
     target_protein = protein_states[prediction_state][target]
-    hotspot_residues = np.asarray(has_residue_flag(target_protein.flags, ResidueFlags.HOTSPOT))
+    hotspot_residues = np.asarray(has_residue_flag(target_protein.flags, ResidueFlags.HOTSPOT | ResidueFlags.SOFTHOTSPOT))
     if not hotspot_residues.any() or not np.asarray(target_protein.atom_mask)[hotspot_residues].any():
         return None
     epitope = epitope_residues(np.asarray(target_protein.atoms, dtype=np.float64), np.asarray(target_protein.atom_mask, dtype=bool), hotspot_residues, epitope_cutoff)

@@ -6,7 +6,7 @@ from typing import NamedTuple
 from bindcraft.prediction import ProteinPredictor
 from bindcraft.filters import binder_assembly_sequence, binder_chain_sequences, binder_target_contact_masks, confidence_stage_filters, design_sequence_report, design_stage_filters, evaluate_design_filters, protomer_identity_fraction, validates_unbound_binder, INTERFACE_PDAE_METRICS
 from bindcraft.loss import align_binder_coordinates, binder_copy_chains, chain_atom_coordinates, chain_residue_slices, multidomain_linker_residues
-from bindcraft.protein import StructurePrediction, StructurePredictions, Protein, ResidueFlags, ProteinStates, has_residue_flag, has_resolved_atom, superposed_on_binder, write_structure, BINDER_ALONE
+from bindcraft.protein import StructurePrediction, StructurePredictions, Protein, ResidueFlags, RESIDUE_FLAGS_DTYPE, ProteinStates, has_residue_flag, has_resolved_atom, superposed_on_binder, write_structure, BINDER_ALONE
 from bindcraft.campaign_log import candidate_outcome, redesigns_kept, exhausted_redesign_window
 from bindcraft.campaign_output import CampaignProgress, RANKING_METRIC, REFOLD_STAGE, accepted_state_suffixes, append_campaign_metrics, ranking_value, redesigned_sequence, stage_folder, structure_metadata, target_ordered_row, timing_stamp, weighted_target_order
 from bindcraft.protein_preparation import frame_holding_target, receptor_chain_layouts, states_holding_the_frame
@@ -45,7 +45,7 @@ def induced_fit_mobile_residues(binder: Protein, binder_alone: Protein, rmsd_thr
 
 def mark_redesign_residues(protein_complex: dict[str, Protein], binder: str, target: str, keep_interface: bool, cutoff: float=4.0, mobile_binder_residues: Array | None=None, hold_framework: bool=False, multi_chain_binder: tuple[str, ...]=(), linker_binder_residues: Array | None=None) -> dict[str, Protein]:
     redesign_complex = dict(protein_complex)
-    redesign_complex[target] = protein_complex[target].replace(flags=(protein_complex[target].flags & _NOT_DESIGN).astype(jnp.uint8))
+    redesign_complex[target] = protein_complex[target].replace(flags=(protein_complex[target].flags & _NOT_DESIGN).astype(RESIDUE_FLAGS_DTYPE))
     held_residue_masks = {}
     for name in binder_copy_chains(protein_complex, binder):
         held_residues = jnp.zeros(len(protein_complex[name]), dtype=bool) if mobile_binder_residues is None else mobile_binder_residues
@@ -61,7 +61,7 @@ def mark_redesign_residues(protein_complex: dict[str, Protein], binder: str, tar
         held_residue_masks.update({name: tied_residues for name in multi_chain_binder})
     for name, held_residues in held_residue_masks.items():
         redesign_residue_flags = jnp.where(held_residues, protein_complex[name].flags & _NOT_DESIGN, protein_complex[name].flags | int(ResidueFlags.DESIGN))
-        redesign_complex[name] = protein_complex[name].replace(flags=redesign_residue_flags.astype(jnp.uint8))
+        redesign_complex[name] = protein_complex[name].replace(flags=redesign_residue_flags.astype(RESIDUE_FLAGS_DTYPE))
     return redesign_complex
 
 #for oligomers
@@ -81,7 +81,7 @@ def prepare_multitarget_redesign(target_states: ProteinStates, binder: str, keep
         union_of_interfaces |= jnp.logical_not(has_residue_flag(protein_complex[binder].flags, ResidueFlags.DESIGN))
     for protein_complex in redesign_states.values():
         binder_flags = jnp.where(union_of_interfaces, protein_complex[binder].flags & _NOT_DESIGN, protein_complex[binder].flags | int(ResidueFlags.DESIGN))
-        protein_complex[binder] = protein_complex[binder].replace(flags=binder_flags.astype(jnp.uint8))
+        protein_complex[binder] = protein_complex[binder].replace(flags=binder_flags.astype(RESIDUE_FLAGS_DTYPE))
     return redesign_states
 
 def ensemble_mean_predictions(protein_states: ProteinStates, model_predictions: dict[str, StructurePredictions]) -> StructurePredictions:

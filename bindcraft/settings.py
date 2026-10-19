@@ -35,7 +35,7 @@ DOMAIN_PARAMETERS = 'n_domains', 'min_domain_size', 'max_domain_size', 'max_doma
 DESIGN_STAGE_NAMES = 'screen', 'refine', 'anneal', 'harden', 'mutate', 'final'
 CAMPAIGN_SETTING_NAMES = frozenset({'aa_bias', 'archive_trajectories', 'attention_backend', 'auto_multi_gpu', 'autotune', 'autotune_loss_weights', 'betasheet_reopt_extra_anneal_steps', 'betasheet_reopt_extra_refine_steps', 'betasheet_reopt_recycles', 'betasheet_reopt_trigger', 'binder_chain', 'binder_lengths', 'binder_name', 'binder_scaffold', 'binder_shapes', 'campaign_name', 'campaign_seed', 'compile_next_length', 'copies', 'crop_fasta_sequence', 'cyclic_offset_mode', 'cyclize_peptide', 'design_dropout', 'design_models', 'design_recycles', 'design_workers', 'desperation', 'desperation_trajectories', 'detarget_check_interval', 'domain_linker_fix_cut', 'enough_passing_sequences', 'filters', 'forced_targeting', 'forced_targeting_shell', 'gpu_ids', 'hash_design_names', 'idr_crop_count', 'induced_fit_monomer_adaptive', 'induced_fit_monomer_chunk', 'induced_fit_monomer_plddt', 'induced_fit_monomer_steps', 'induced_fit_mpnn_designed_share', 'induced_fit_mpnn_shell', 'induced_fit_mpnn_threshold', 'induced_fit_steps', 'initial_guess', 'kept_sequences', 'length_bucket_size', 'losses', 'max_binder_chain_breaks_final', 'max_binder_free_cysteines_final', 'max_coldspot_contact_final', 'max_cyclic_closure_distance_final', 'max_detarget_interface_residues_final', 'max_detarget_iptm', 'max_detarget_rounds', 'max_exposed_loop_fraction_final', 'max_helix_fraction_final', 'max_induced_fit_tm_final', 'max_interdomain_contact_final', 'max_mhc_anchor_score_final', 'max_off_epitope_contact_final', 'max_off_paratope_contact_final', 'max_oligomer_symmetry_rmsd_final', 'max_protease_site_score_final', 'max_scaffold_framework_rmsd_final', 'max_surface_hydrophobicity_final', 'max_termini_distance_final', 'max_terminus_exposure_final', 'max_trajectories', 'max_workers_per_gpu', 'min_binder_disulfides_final', 'min_domain_separation_ratio_final', 'min_epitope_residues_contacted_final', 'min_framework_packing_final', 'min_hotspot_contact_final', 'min_induced_fit_interface_rmsd_final', 'min_interface_buried_area_final', 'min_receptor_chains_contacted_final', 'min_scaffold_sequence_retained_final', 'min_target_crop_length_final', 'min_target_plddt_final', 'min_termini_away_cosine_final', 'mpnn_charge_lambda_max', 'mpnn_charge_tolerance', 'mpnn_fix_linker', 'mpnn_model', 'mpnn_target_charge', 'mpnn_variant', 'multitarget_best_round', 'multitarget_cumulative_filter', 'multitarget_filter_models', 'multitarget_merged_gradient_budget', 'multitarget_merged_gradients', 'multitarget_rounds_per_target', 'multitarget_steps', 'multitarget_swap_patience', 'multitarget_swap_threshold', 'multitarget_tied_redesign', 'multitarget_warmup_patience', 'mutate_positions', 'number_of_final_designs', 'oligomer_tie', 'parameter_sweep', 'pose_template_binder', 'project_folder', 'redesign_interface', 'relax_accepted_designs', 'relax_learning_rate', 'relax_min_sep', 'relax_overlap_tol', 'relax_restraint_backbone', 'relax_restraint_sidechain', 'relax_steps', 'relax_weight_bond', 'relax_weight_clash', 'resume', 'save_binder_monomers', 'save_design_animations', 'save_design_frames', 'save_design_trajectory', 'save_design_sequences', 'save_failed_refolds', 'save_failed_trajectories', 'save_loss_plots', 'sequence_candidates', 'sparse_output', 'subbatch_size', 'target_chain', 'targets', 'trajectory_only', 'use_cueq', 'validation_crop_flank', 'validation_model', 'validation_models', 'validation_recycles', 'worker_launch_stagger', 'workers_per_gpu'})
 FINAL_CONFIDENCE_FILTERS = {'min_monomer_plddt_final': 'Unbound_Binder_pLDDT', 'min_ptm_final': 'pTM', 'min_iptm_final': 'i_pTM', 'max_ipae_final': 'i_pAE'}
-TARGET_SETTING_NAMES = frozenset({'name', 'target_path', 'chains', 'hotspots', 'coldspots', 'weight', 'objective'})
+TARGET_SETTING_NAMES = frozenset({'name', 'target_path', 'chains', 'hotspots', 'coldspots', 'soft_coldspots', 'soft_hotspots', 'weight', 'objective'})
 METRIC_ENTRY_NAMES = frozenset({'params', 'prediction_state'})
 FILTER_ENTRY_NAMES = METRIC_ENTRY_NAMES | {'threshold', 'higher', 'mandatory'}
 CORE_DEFAULTS = json.loads((Path(__file__).parent.parent / 'settings' / 'core' / 'default.json').read_text())
@@ -56,6 +56,8 @@ class PreparedTargetState:
     coldspots: str = ''
     crop_index: int = 0
     crop_length_bounds: tuple[int, int] | None = None
+    soft_coldspots: str = ''
+    soft_hotspots: str = ''
 
 def resolve_crop_length_bounds(settings: dict) -> tuple[int, int] | None:
     crop_lengths = settings.get('crop_fasta_sequence', DEFAULT_IDR_CROP_LENGTHS)
@@ -122,7 +124,7 @@ def resolve_prepared_states(settings: dict) -> tuple[PreparedTargetState, ...]:
         weight = -abs(weight) if objective == 'detarget' else weight
         for crop_index in range(crop_count):
             name = target['name'] if crop_count == 1 else f"{target['name']}_epitope_{crop_index + 1}"
-            prepared_states.append(PreparedTargetState(name, target['name'], path, objective, weight, target_chain_name(target_chain_prefix, name), target.get('chains', ''), target.get('hotspots', ''), target.get('coldspots', ''), 0 if crop_count == 1 else crop_index + 1, crop_length_bounds))
+            prepared_states.append(PreparedTargetState(name, target['name'], path, objective, weight, target_chain_name(target_chain_prefix, name), target.get('chains', ''), target.get('hotspots', ''), target.get('coldspots', ''), 0 if crop_count == 1 else crop_index + 1, crop_length_bounds, target.get('soft_coldspots', ''), target.get('soft_hotspots', '')))
     return tuple(prepared_states)
 
 def record_modality_filter(settings: dict, name: str, unrejecting_threshold: float, higher: bool=False, threshold_setting: str='', **params) -> None:
@@ -273,9 +275,9 @@ CAMPAIGN_FEATURES = (
     CampaignFeature('disordered target crops', lambda settings: bool(settings.get('idr_crop_count')), shorthand='idr'),
     CampaignFeature('disulfide staple', lambda settings: bool(settings.get('weights_disulfide')) or 'disulfide' in settings.get('losses', {}),
                     checks=(ModalityCheck('Binder_Disulfides', 0.0, True, 'min_binder_disulfides_final'),)),
-    CampaignFeature('coldspot', lambda settings: any(state.coldspots for state in resolve_prepared_states(settings)), configure=configure_coldspots,
+    CampaignFeature('coldspot', lambda settings: any(state.coldspots or state.soft_coldspots for state in resolve_prepared_states(settings)), configure=configure_coldspots,
                     checks=(ModalityCheck('Coldspot_Contact_Fraction', 100.0, threshold_setting='max_coldspot_contact_final'),)),
-    CampaignFeature('hotspot targeting', lambda settings: any(state.hotspots for state in resolve_prepared_states(settings)),
+    CampaignFeature('hotspot targeting', lambda settings: any(state.hotspots or state.soft_hotspots for state in resolve_prepared_states(settings)),
                     checks=(ModalityCheck('Hotspot_Contact_Fraction', 0.0, True, 'min_hotspot_contact_final'),
                             ModalityCheck('Off_Epitope_Contact_Fraction', 1.0, threshold_setting='max_off_epitope_contact_final', parameters=epitope_check_parameters),
                             ModalityCheck('Epitope_Residues_Contacted', 0.0, True, 'min_epitope_residues_contacted_final', parameters=epitope_check_parameters))),
@@ -506,6 +508,8 @@ class TargetSettings:
     hotspots: str = ''
     weight: float = 1.0
     coldspots: str = ''
+    soft_coldspots: str = ''
+    soft_hotspots: str = ''
 
 def campaign_binder_lengths(binder_lengths) -> tuple[int, ...] | None:
     if binder_lengths is None:
@@ -643,14 +647,14 @@ class BinderDesignSettings:
         self.binder_chains = self.binder_chains or resolve_binder_chains(self.binder.copies, self.binder.scaffold)
         self.designed_binder_chain = self.designed_binder_chain or resolve_designed_binder_chain(self.settings, self.binder_chains)
         self.oligomer_tie = self.oligomer_tie or resolve_oligomer_tie(self.settings)
-        self.prepared_states = self.prepared_states or tuple(PreparedTargetState(target.name, target.name, target.path, target_objective(target), target.weight, target_chain_name(self.target_chain_prefix, target.name), target.chains, target.hotspots, target.coldspots, 0, resolve_crop_length_bounds(self.settings) if is_fasta(target.path) else None) for target in self.targets)
+        self.prepared_states = self.prepared_states or tuple(PreparedTargetState(target.name, target.name, target.path, target_objective(target), target.weight, target_chain_name(self.target_chain_prefix, target.name), target.chains, target.hotspots, target.coldspots, 0, resolve_crop_length_bounds(self.settings) if is_fasta(target.path) else None, target.soft_coldspots, target.soft_hotspots) for target in self.targets)
 
 def build_design_settings(settings: dict) -> BinderDesignSettings:
     prepared_states = resolve_prepared_states(settings)
     for state in prepared_states:
         if state.path is None:
             raise ValueError(f'Target {state.source_target!r} needs target_path or structure')
-    targets = [TargetSettings(state.name, state.path, state.chains, state.hotspots, state.weight, state.coldspots) for state in prepared_states]
+    targets = [TargetSettings(state.name, state.path, state.chains, state.hotspots, state.weight, state.coldspots, state.soft_coldspots, state.soft_hotspots) for state in prepared_states]
     binder_lengths = resolve_binder_lengths(settings.get('binder_lengths'))
     binder = BinderSettings(lengths=binder_lengths, copies=settings.get('copies', 1), scaffold=settings.get('binder_scaffold'), scaffold_edits=settings.get('mutate_positions', ''), amino_acid_bias=resolve_amino_acid_bias(settings), omitted_amino_acids=resolve_omitted_amino_acids(settings))
     filter_settings = settings.get('filters')

@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 from dataclasses import replace
 from jax import Array
-from bindcraft.protein import AMINO_ACIDS, Protein, ProteinStates, ResidueFlags, has_residue_flag, parse_residue_length_choices, selected_chain_names, structure_chain_labels, structure_chain_names, structure_source_description, superposed_on_reference_target, target_chain_name, target_fit_quality
+from bindcraft.protein import AMINO_ACIDS, Protein, ProteinStates, ResidueFlags, has_residue_flag, parse_residue_length_choices, scaffold_edit_spans, selected_chain_names, structure_chain_labels, structure_chain_names, structure_source_description, superposed_on_reference_target, target_chain_name, target_fit_quality
 from bindcraft.af2 import campaign_length_bucket, padded_prediction_length
 from bindcraft.design_identity import target_conformation_fingerprint
 from bindcraft.loss import DesignLoss, build_design_losses, induced_fit_binder_alone_losses, induced_fit_hinge_names, sampled_loss_weights
@@ -18,8 +18,8 @@ def chain_qualified_residue_span(span: str, receptor_chain_names: list[str]) -> 
     span = span.strip()
     return span if span[0].isalpha() else f'{receptor_chain_names[0]}{span}'
 
-def target_binding_site_flags(receptor_chain_names: list[str], hotspots: str, coldspots: str='') -> str:
-    return ','.join(f'{chain_qualified_residue_span(span, receptor_chain_names)}+{residue_flag}' for residue_flag, spans in (('HOTSPOT', hotspots), ('COLDSPOT', coldspots)) for span in spans.split(',') if span.strip())
+def target_binding_site_flags(receptor_chain_names: list[str], hotspots: str, coldspots: str='', soft_coldspots: str='', soft_hotspots: str='') -> str:
+    return ','.join(f'{chain_qualified_residue_span(span, receptor_chain_names)}+{residue_flag}' for residue_flag, spans in (('HOTSPOT', hotspots), ('COLDSPOT', coldspots), ('SOFTCOLDSPOT', soft_coldspots), ('SOFTHOTSPOT', soft_hotspots)) for span in spans.split(',') if span.strip())
 
 @functools.cache
 def receptor_chain_layout(path: str, chains: str) -> tuple[tuple[str, int, int], ...]:
@@ -79,7 +79,7 @@ def prepare_targets(design_settings: BinderDesignSettings, seed: int | None=None
     random_generator = random.Random(design_settings.seed if seed is None else seed)
     for target in design_settings.targets:
         if is_fasta(target.path):
-            target_protein = Protein.from_fasta(target.path, target.chains or 'A', target_binding_site_flags([target.chains or 'A'], target.hotspots, target.coldspots))
+            target_protein = Protein.from_fasta(target.path, target.chains or 'A', target_binding_site_flags([target.chains or 'A'], target.hotspots, target.coldspots, target.soft_coldspots, target.soft_hotspots))
             crop_lengths = design_settings.settings.get('crop_fasta_sequence', DEFAULT_IDR_CROP_LENGTHS)
             if crop_lengths is not None and crop_lengths is not False:
                 crop_length_bounds = (crop_lengths, crop_lengths) if isinstance(crop_lengths, int) and (not isinstance(crop_lengths, bool)) else crop_lengths
@@ -105,13 +105,13 @@ def prepare_targets(design_settings: BinderDesignSettings, seed: int | None=None
             targets[target.name] = target_protein
         else:
             receptor_chain_names = selected_chain_names(target.chains, structure_chain_labels(target.path)) or structure_chain_names(target.path)
-            receptor_chains = Protein.from_structure(target.path, chains=','.join(receptor_chain_names), flags=target_binding_site_flags(receptor_chain_names, target.hotspots, target.coldspots))
+            receptor_chains = Protein.from_structure(target.path, chains=','.join(receptor_chain_names), flags=target_binding_site_flags(receptor_chain_names, target.hotspots, target.coldspots, target.soft_coldspots, target.soft_hotspots))
             missing_chains = [chain_name for chain_name in receptor_chain_names if chain_name not in receptor_chains]
             if missing_chains:
                 raise ValueError(f'Target {target.name!r} has no chain {missing_chains} in {structure_source_description(target.path)}; the structure has {structure_chain_names(target.path)}. Write several chains as "A,B".')
             targets[target.name] = merge_receptor_chains([receptor_chains[chain_name] for chain_name in receptor_chain_names])
-            if target.coldspots and not validation_crop:
-                print(f'target={target.name} coldspots={target.coldspots} residues={int(has_residue_flag(targets[target.name].flags, ResidueFlags.COLDSPOT).sum())} hotspots={target.hotspots or "none"}', flush=True)
+            if (target.coldspots or target.soft_coldspots or target.soft_hotspots) and not validation_crop:
+                print(f'target={target.name} coldspots={target.coldspots or "none"} residues={int(has_residue_flag(targets[target.name].flags, ResidueFlags.COLDSPOT).sum())} soft_coldspots={target.soft_coldspots or "none"} soft_residues={int(has_residue_flag(targets[target.name].flags, ResidueFlags.SOFTCOLDSPOT).sum())} hotspots={target.hotspots or "none"} soft_hotspots={target.soft_hotspots or "none"} soft_hotspot_residues={int(has_residue_flag(targets[target.name].flags, ResidueFlags.SOFTHOTSPOT).sum())}', flush=True)
     return targets if len(targets) < 2 else targets_in_one_frame(targets, frame_holding_target(design_settings))
 
 def crops_a_disordered_target(design_settings: BinderDesignSettings) -> bool:

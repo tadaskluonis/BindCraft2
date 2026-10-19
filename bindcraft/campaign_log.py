@@ -146,7 +146,7 @@ def campaign_header(campaign: str, settings: dict, chain_residues: dict[str, dic
     crop_count = int(settings.get('idr_crop_count') or 0)
     window = list(settings.get('crop_fasta_sequence') or [])
     for target in targets:
-        steering = ''.join(f' | {name} {getattr(target, name)}' for name in ('hotspots', 'coldspots') if getattr(target, name, None))
+        steering = ''.join(f' | {name} {getattr(target, name)}' for name in ('hotspots', 'soft_hotspots', 'coldspots', 'soft_coldspots') if getattr(target, name, None))
         if crop_count:
             span = '-'.join(str(value) for value in window) if window else 'unset'
             lines.append(f"target {target.name} | {crop_count} windows of {span} residues, redrawn every trajectory{steering}")

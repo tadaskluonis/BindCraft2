@@ -49,6 +49,11 @@ class ResidueFlags(IntFlag):
     COLDSPOT = 1 << 5
     CYCLIC = 1 << 6
     PADDING = 1 << 7
+    SOFTCOLDSPOT = 1 << 8
+    SOFTHOTSPOT = 1 << 9
+
+#SOFTCOLDSPOT is the ninth flag and SOFTHOTSPOT the tenth, so the array no longer fits in a byte.
+RESIDUE_FLAGS_DTYPE = jnp.uint16
 
 def has_residue_flag(flags: Array, flag: ResidueFlags) -> Array:
     return flags & flag != 0
@@ -192,7 +197,7 @@ class Protein:
     @staticmethod
     def empty(length: int, key: Array) -> 'Protein':
         atoms, atom_mask, residue_index = Protein.unresolved_atom_arrays(length)
-        return Protein(sequence=0.01 * jax.random.normal(key, (length, len(AMINO_ACIDS)), dtype=jnp.float16), atoms=atoms, atom_mask=atom_mask, flags=jnp.full((length,), ResidueFlags.DESIGN, dtype=jnp.uint8), residue_index=residue_index)
+        return Protein(sequence=0.01 * jax.random.normal(key, (length, len(AMINO_ACIDS)), dtype=jnp.float16), atoms=atoms, atom_mask=atom_mask, flags=jnp.full((length,), ResidueFlags.DESIGN, dtype=RESIDUE_FLAGS_DTYPE), residue_index=residue_index)
 
     @staticmethod
     def from_fasta(source: str, chain_letter: str='A', flags: str='') -> 'Protein':
@@ -209,7 +214,7 @@ class Protein:
             raise ValueError(f'from_fasta: non-standard amino acid(s) {invalid_amino_acids} in sequence')
         aatype = [AMINO_ACID_INDEX[amino_acid] for amino_acid in amino_acid_sequence]
         atoms, atom_mask, residue_index = Protein.unresolved_atom_arrays(len(aatype))
-        return Protein(sequence=jax.nn.one_hot(jnp.asarray(aatype), len(AMINO_ACIDS), dtype=jnp.float16), atoms=atoms, atom_mask=atom_mask, flags=jnp.asarray(annotated_residue_flags(residue_index.tolist(), flags, chain_letter, ResidueFlags.SEQUENCE), dtype=jnp.uint8), residue_index=residue_index)
+        return Protein(sequence=jax.nn.one_hot(jnp.asarray(aatype), len(AMINO_ACIDS), dtype=jnp.float16), atoms=atoms, atom_mask=atom_mask, flags=jnp.asarray(annotated_residue_flags(residue_index.tolist(), flags, chain_letter, ResidueFlags.SEQUENCE), dtype=RESIDUE_FLAGS_DTYPE), residue_index=residue_index)
 
     @staticmethod
     def from_structure(source: str, chains: str | None=None, flags: str='') -> dict[str, 'Protein']:
@@ -221,7 +226,7 @@ class Protein:
         protein_chains: dict[str, Protein] = {}
         for chain_id, chain_records in group_atoms_by_chain(records).items():
             atom_coordinates, atom_mask, aatype, residue_index = atom37_arrays_from_records(chain_records)
-            protein_chains[chain_id] = Protein(sequence=jax.nn.one_hot(jnp.asarray(aatype), len(AMINO_ACIDS), dtype=jnp.float16), atoms=jnp.asarray(atom_coordinates, dtype=jnp.float16), atom_mask=jnp.asarray(atom_mask, dtype=bool), flags=jnp.asarray(annotated_residue_flags(residue_index, flags, chain_id, ResidueFlags.TEMPLATE | ResidueFlags.SEQUENCE), dtype=jnp.uint8), residue_index=jnp.asarray(residue_index, dtype=jnp.int32))
+            protein_chains[chain_id] = Protein(sequence=jax.nn.one_hot(jnp.asarray(aatype), len(AMINO_ACIDS), dtype=jnp.float16), atoms=jnp.asarray(atom_coordinates, dtype=jnp.float16), atom_mask=jnp.asarray(atom_mask, dtype=bool), flags=jnp.asarray(annotated_residue_flags(residue_index, flags, chain_id, ResidueFlags.TEMPLATE | ResidueFlags.SEQUENCE), dtype=RESIDUE_FLAGS_DTYPE), residue_index=jnp.asarray(residue_index, dtype=jnp.int32))
         return protein_chains
 
     def with_scaffold(self, chain_letter: str, edit_string: str, key: Array) -> 'Protein':
@@ -265,7 +270,7 @@ class Protein:
             edited_atom_mask.append(atom_mask[scaffold_residue_position])
             edited_residue_flags.append(residue_flags[scaffold_residue_position])
             scaffold_residue_position += 1
-        return Protein(sequence=jnp.asarray(edited_sequence, dtype=jnp.float16), atoms=jnp.asarray(edited_atom_positions, dtype=jnp.float16), atom_mask=jnp.asarray(edited_atom_mask, dtype=bool), flags=jnp.asarray(edited_residue_flags, dtype=jnp.uint8), residue_index=jnp.asarray(edited_residue_indices, dtype=jnp.int32))
+        return Protein(sequence=jnp.asarray(edited_sequence, dtype=jnp.float16), atoms=jnp.asarray(edited_atom_positions, dtype=jnp.float16), atom_mask=jnp.asarray(edited_atom_mask, dtype=bool), flags=jnp.asarray(edited_residue_flags, dtype=RESIDUE_FLAGS_DTYPE), residue_index=jnp.asarray(edited_residue_indices, dtype=jnp.int32))
 
 @dataclass
 class StructurePrediction:

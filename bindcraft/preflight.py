@@ -54,7 +54,7 @@ def campaign_output_in_folder(project_folder: str) -> list[str]:
     campaign_folders = [project_folder] + sorted(entry.path for entry in os.scandir(project_folder) if entry.is_dir())
     return sorted({os.path.relpath(os.path.join(folder, name), project_folder) for folder in campaign_folders for name in CAMPAIGN_OUTPUT_NAMES if os.path.exists(os.path.join(folder, name))})
 
-COMMA_SEPARATED_SETTINGS = frozenset({'chains', 'coldspots', 'gpu_ids', 'hotspots', 'mutate_positions', 'scaffold_edits'})
+COMMA_SEPARATED_SETTINGS = frozenset({'chains', 'coldspots', 'soft_coldspots', 'gpu_ids', 'hotspots', 'soft_hotspots', 'mutate_positions', 'scaffold_edits'})
 
 def cleaned_setting(name: str, value):
     if isinstance(value, str):
