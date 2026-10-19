@@ -1,0 +1,14 @@
+{
+  "description": "Human GLP-1R 6X18 chain R, 184 residues in four segments (136-161, 181-246, 267-321, 360-396). All membrane-facing exposed hydrophobics are charge-swapped to alternating Glu/Lys (54 positions in the PDB; L189K and L232E added on top of the original 52). Coldspots (70) are the set from the 17 Oct mouthcap campaigns plus L189/L232: membrane belt, cut-exposed edges and the peripheral extracellular shell, but NOT the ledge the cap rests on (136-139, 198, 204, 210, 211, 213, 221, 292, 295, 301, 302). Ser136 is the construct N-terminus and stays in soft_coldspots. Hard hotspots (100% contact required by min_hotspot_contact_final 0.75 over these two): Arg190 and Gln234 deep in the pore. Soft hotspots (steer the design, not gated): Trp214 (ECL1 ledge), Glu294 (ECL2 rim), Arg376 (TM6/ECL3 side). Tyr205 was removed from the hotspot set entirely in v5. All 27 GLP-1(7-14) pocket residues remain free.",
+  "targets": [
+    {
+      "name": "hGLP1R_6X18_belt",
+      "target_path": "/home/tadas/code/adaptyv-bio-comp-3/bc2/structures/glp1r_belt_target.pdb",
+      "chains": "R",
+      "hotspots": "190,234",
+      "coldspots": "143,146,147,150,153,154,156,160,161,181,182,183,184,185,188,189,192,195,196,202,203,206,207,208,209,212,217,219,224,228,232,243,267,268,269,270,272,274,276,278,279,282,286,287,290,304,307,308,311,312,314,315,319,321,360,362,365,366,367,369,370,371,379,381,382,385,390,393,394,396",
+      "soft_coldspots": "136",
+      "soft_hotspots": "214,294,376"
+    }
+  ]
+}
