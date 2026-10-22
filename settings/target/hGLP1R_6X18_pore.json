@@ -1,0 +1,14 @@
+{
+  "description": "Human GLP-1R 6X18 chain R, same belt construct and coordinates as hGLP1R_6X18_belt (184 residues, segments 136-161/181-246/267-321/360-396, membrane-facing hydrophobics charge-swapped). Retargeted from the extracellular cap to the TMD orthosteric pore for a cyclic peptide. Depth measured along the TM-bundle axis with 0 A at the ledge plane: the mouth/vestibule (0 to -6 A) has 7.2-7.7 A free radius, the constriction (-8 to -12 A) 3.7-3.9 A, -14 to -18 A 2.8-3.3 A, and the deep channel (-20 to -26 A) only 1.3-2.2 A, ~530 A^3 total. Native GLP-1(7-14) in the same frame spans only -17.2 (His7) to -7.3 A (Ser14), so residues below -18 A are channel WALL contacted by peptide side chains from above, not volume a macrocycle can occupy. Hard hotspots (gated at min_hotspot_contact_final 0.66, so 2 of 3 required): Gln234 (-13.7), Trp306 (-13.4) and Arg310 (-16.2), the deepest lumen-facing residues a ring can reach - all three contact native His7. Soft hotspots steer deeper without gating: Arg190 (-20.7), Glu387 (-20.8) and Tyr152 (-18.8), each contacted by native Glu9/Ala8 from above, so reachable by a side chain without descending. Coldspots are the 70-residue membrane belt and peripheral shell carried over unchanged from the belt target. The ledge and extracellular mouth (136-139, 198, 204, 210, 211, 213, 221, 292, 295, 301, 302) are deliberately left FREE, not coldspotted: the ring is meant to protrude through the mouth. The belt campaign's top soft hotspots Trp214/Glu294/Arg376 are removed - no hotspot sits on the top.",
+  "targets": [
+    {
+      "name": "hGLP1R_6X18_pore",
+      "target_path": "/home/tadas/code/adaptyv-bio-comp-3/bc2/structures/glp1r_belt_target.pdb",
+      "chains": "R",
+      "hotspots": "234,306,310",
+      "coldspots": "143,146,147,150,153,154,156,160,161,181,182,183,184,185,188,189,192,195,196,202,203,206,207,208,209,212,217,219,224,228,232,243,267,268,269,270,272,274,276,278,279,282,286,287,290,304,307,308,311,312,314,315,319,321,360,362,365,366,367,369,370,371,379,381,382,385,390,393,394,396",
+      "soft_coldspots": "136",
+      "soft_hotspots": "152,190,387"
+    }
+  ]
+}
